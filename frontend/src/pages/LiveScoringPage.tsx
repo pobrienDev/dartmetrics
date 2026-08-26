@@ -18,18 +18,7 @@ import type {
   TurnSummary,
   VisitResponse,
 } from '../api/types'
-
-function dartScore(dart: DartRequest): number {
-  if (dart.multiplier === 'miss' || dart.segment === null) return 0
-  const factor = { single: 1, double: 2, triple: 3 }[dart.multiplier]
-  return dart.segment * factor
-}
-
-function dartLabel(dart: DartRequest): string {
-  if (dart.multiplier === 'miss') return 'Miss'
-  const prefix = { single: '', double: 'D', triple: 'T' }[dart.multiplier]
-  return `${prefix}${dart.segment}`
-}
+import { dartLabel, dartScore, visitMustEnd } from '../utils/darts'
 
 export function LiveScoringPage() {
   const { matchId } = useParams<{ matchId: string }>()
@@ -93,9 +82,8 @@ export function LiveScoringPage() {
     const remaining =
       (activePlayer.remaining_score ?? 0) - next.reduce((sum, d) => sum + dartScore(d), 0)
 
-    // The turn must end when the player reaches 0 or an unfinishable
-    // score (<= 1). The server is the judge; we just stop collecting.
-    if (next.length === 3 || remaining <= 1) {
+    // The server is the judge; we just stop collecting darts.
+    if (visitMustEnd(next.length, remaining)) {
       submitVisit.mutate(next)
     } else {
       setDarts(next)
