@@ -177,14 +177,14 @@ export function LiveScoringPage() {
               <button
                 onClick={() => setDarts(darts.slice(0, -1))}
                 disabled={darts.length === 0}
-                className="rounded-lg bg-gray-700 px-3 py-1.5 text-sm hover:bg-gray-600 disabled:opacity-40"
+                className="rounded-lg bg-gray-700 px-3 py-2.5 text-sm hover:bg-gray-600 disabled:opacity-40"
               >
                 ⌫ Dart
               </button>
               <button
                 onClick={() => undoVisit.mutate()}
                 disabled={undoVisit.isPending}
-                className="rounded-lg bg-gray-700 px-3 py-1.5 text-sm hover:bg-gray-600 disabled:opacity-40"
+                className="rounded-lg bg-gray-700 px-3 py-2.5 text-sm hover:bg-gray-600 disabled:opacity-40"
               >
                 Undo visit
               </button>
@@ -197,7 +197,7 @@ export function LiveScoringPage() {
               <button
                 key={m}
                 onClick={() => setMultiplier(m)}
-                className={`rounded-lg py-2 text-sm font-semibold uppercase ${
+                className={`rounded-lg py-3 text-sm font-semibold uppercase ${
                   multiplier === m
                     ? 'bg-emerald-600'
                     : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
@@ -208,14 +208,15 @@ export function LiveScoringPage() {
             ))}
             <button
               onClick={() => addDart({ segment: null, multiplier: 'miss' })}
-              className="rounded-lg bg-gray-800 py-2 text-sm font-semibold uppercase text-gray-300 hover:bg-gray-700"
+              className="rounded-lg bg-gray-800 py-3 text-sm font-semibold uppercase text-gray-300 hover:bg-gray-700"
             >
               Miss
             </button>
           </div>
 
-          {/* Number pad */}
-          <div className="grid grid-cols-7 gap-2">
+          {/* Number pad: 5 columns on phones keeps every key at a
+              comfortable thumb size; 7 columns from tablet up. */}
+          <div className="grid grid-cols-5 gap-2 sm:grid-cols-7">
             {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => (
               <button
                 key={n}
@@ -227,7 +228,7 @@ export function LiveScoringPage() {
             ))}
             <button
               onClick={() => addDart({ segment: 25, multiplier: multiplier === 'triple' ? 'single' : multiplier })}
-              className="col-span-2 rounded-lg bg-red-900 py-3 text-lg font-semibold hover:bg-red-800"
+              className="col-span-5 rounded-lg bg-red-900 py-3 text-lg font-semibold hover:bg-red-800 sm:col-span-2"
               title="Outer bull 25; select Double for the inner bull (50)"
             >
               Bull

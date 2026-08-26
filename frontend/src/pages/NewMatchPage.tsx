@@ -1,4 +1,4 @@
-// New Match: pick an existing opponent or create a guest, choose the
+﻿// New Match: pick an existing opponent or create a guest, choose the
 // match length and who throws first, then jump into live scoring.
 
 import { useMutation, useQuery } from '@tanstack/react-query'
@@ -121,7 +121,7 @@ export function NewMatchPage() {
                   key={n}
                   type="button"
                   onClick={() => setBestOf(n)}
-                  className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium ${
+                  className={`flex-1 rounded-lg border px-3 py-3 text-sm font-medium ${
                     bestOf === n
                       ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
                       : 'border-gray-300 text-gray-700 hover:bg-gray-50'
@@ -139,7 +139,7 @@ export function NewMatchPage() {
               <button
                 type="button"
                 onClick={() => setOpponentStarts(false)}
-                className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium ${
+                className={`flex-1 rounded-lg border px-3 py-3 text-sm font-medium ${
                   !opponentStarts
                     ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
                     : 'border-gray-300 text-gray-700 hover:bg-gray-50'
@@ -150,7 +150,7 @@ export function NewMatchPage() {
               <button
                 type="button"
                 onClick={() => setOpponentStarts(true)}
-                className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium ${
+                className={`flex-1 rounded-lg border px-3 py-3 text-sm font-medium ${
                   opponentStarts
                     ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
                     : 'border-gray-300 text-gray-700 hover:bg-gray-50'
