@@ -94,3 +94,24 @@ class MatchSetup:
 @pytest.fixture
 def match_setup(db_session):
     return MatchSetup(db_session)
+
+
+@pytest.fixture
+def client(db_session):
+    """TestClient whose get_db yields the rollback-wrapped session, so
+    endpoint commits land in savepoints the fixture still discards."""
+    from fastapi.testclient import TestClient
+
+    from app.db import get_db
+    from app.main import app
+
+    # Must be a generator *function* — FastAPI unwraps those into
+    # yield-dependencies; a plain callable returning an iterator is not.
+    def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        yield TestClient(app)
+    finally:
+        app.dependency_overrides.clear()

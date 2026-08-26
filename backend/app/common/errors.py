@@ -47,3 +47,18 @@ class InvalidCredentials(DomainError):
 class NotAuthenticated(DomainError):
     code = "NOT_AUTHENTICATED"
     http_status = 401
+
+
+class Forbidden(DomainError):
+    code = "FORBIDDEN"
+    http_status = 403
+
+
+class PlayerNotFound(DomainError):
+    code = "PLAYER_NOT_FOUND"
+    http_status = 404
+
+
+class PlayerProfileExists(DomainError):
+    code = "PLAYER_PROFILE_EXISTS"
+    http_status = 409

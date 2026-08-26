@@ -6,26 +6,9 @@ rollback still discards — real database behavior, no leftover rows.
 """
 
 import pytest
-from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.auth.models import User
-from app.db import get_db
-from app.main import app
-
-
-@pytest.fixture
-def client(db_session):
-    # Must be a generator *function* — FastAPI unwraps those into
-    # yield-dependencies; a plain callable returning an iterator is not.
-    def override_get_db():
-        yield db_session
-
-    app.dependency_overrides[get_db] = override_get_db
-    try:
-        yield TestClient(app)
-    finally:
-        app.dependency_overrides.clear()
 
 
 VALID_BODY = {
