@@ -89,6 +89,19 @@ def record_visit(
     return {"turn": turn, "state": state}
 
 
+@router.post("/{match_id}/abandon", response_model=MatchStateResponse)
+def abandon_match(
+    match_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> MatchStateResponse:
+    """Cancel an in-progress match without recording a winner."""
+    match = service.abandon_match(db, user=current_user, match_id=match_id)
+    state = service.build_match_state(db, match)
+    db.commit()
+    return state
+
+
 @router.delete("/{match_id}/visits/latest", response_model=MatchStateResponse)
 def undo_latest_visit(
     match_id: uuid.UUID,

@@ -247,6 +247,23 @@ def record_match_visit(
     return turn, match
 
 
+def abandon_match(session: Session, user: User, match_id: uuid.UUID) -> Match:
+    """Cancel an in-progress match. No winner is recorded, and
+    cancelled matches are excluded from win statistics. The active
+    leg keeps its in-progress rows untouched for audit; the cancelled
+    match status is what blocks any further scoring."""
+    match = get_match(session, match_id)
+    _ensure_can_score(session, user, match)
+
+    if match.status is not MatchStatus.IN_PROGRESS:
+        raise MatchNotActive(f"Match is {match.status}; only an in-progress match can be abandoned.")
+
+    match.status = MatchStatus.CANCELLED
+    match.completed_at = datetime.now(timezone.utc)
+    session.flush()
+    return match
+
+
 def undo_latest_visit(session: Session, user: User, match_id: uuid.UUID) -> Match:
     """Remove the most recent visit in the active leg and restore the
     scoreboard (spec 13.4: latest active-leg visit only — completed

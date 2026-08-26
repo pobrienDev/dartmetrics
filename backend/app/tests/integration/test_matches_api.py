@@ -453,6 +453,64 @@ def test_non_participant_cannot_undo(client, setup):
     assert response.json()["error"]["code"] == "MATCH_ACCESS_DENIED"
 
 
+# --- Abandon ---------------------------------------------------------------
+
+
+def test_abandon_cancels_match_and_blocks_scoring(client, setup):
+    match = make_match(client, setup, best_of=3)
+    visit(client, setup, match["id"], setup["own"]["id"], [T20] * 3)
+
+    response = client.post(
+        f"/api/v1/matches/{match['id']}/abandon", headers=setup["headers"]
+    )
+    assert response.status_code == 200
+    state = response.json()
+    assert state["status"] == "cancelled"
+    assert state["winner_player_id"] is None
+
+    body = visit(client, setup, match["id"], setup["guest"]["id"], [S20] * 3, expect=409)
+    assert body["error"]["code"] == "MATCH_NOT_ACTIVE"
+    assert undo(client, setup, match["id"], expect=409)["error"]["code"] == "MATCH_NOT_ACTIVE"
+
+    listed = client.get(
+        "/api/v1/matches?status=cancelled", headers=setup["headers"]
+    ).json()
+    assert [m["id"] for m in listed["items"]] == [match["id"]]
+
+
+def test_abandoned_match_does_not_count_in_stats(client, setup):
+    match = make_match(client, setup)
+    visit(client, setup, match["id"], setup["own"]["id"], [T20] * 3)
+    client.post(f"/api/v1/matches/{match['id']}/abandon", headers=setup["headers"])
+
+    stats = client.get(
+        f"/api/v1/players/{setup['own']['id']}/stats", headers=setup["headers"]
+    ).json()
+    assert stats["matches_played"] == 0
+    assert stats["win_percentage"] is None
+    # ...but the thrown darts still count toward averages (raw events)
+    assert stats["total_darts"] == 3
+
+
+def test_cannot_abandon_completed_match(client, setup):
+    match = make_match(client, setup, best_of=1)
+    finish_match(client, setup, match["id"])
+    response = client.post(
+        f"/api/v1/matches/{match['id']}/abandon", headers=setup["headers"]
+    )
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "MATCH_NOT_ACTIVE"
+
+
+def test_non_participant_cannot_abandon(client, setup):
+    match = make_match(client, setup)
+    outsider_headers = signup(client, "outsider2@example.com", "Outsider2")
+    response = client.post(
+        f"/api/v1/matches/{match['id']}/abandon", headers=outsider_headers
+    )
+    assert response.status_code == 403
+
+
 def test_scoring_completed_match_is_409(client, setup):
     match = make_match(client, setup, best_of=1)
     own, guest = setup["own"]["id"], setup["guest"]["id"]
