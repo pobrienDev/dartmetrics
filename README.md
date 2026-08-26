@@ -40,6 +40,20 @@ the Phase 0 specification; the scoring engine's unit tests mirror its
 acceptance matrix one-to-one (`app/tests/unit/test_engine.py`, cases
 S01–S16).
 
+## Authentication model
+
+- Passwords are hashed with **Argon2id** (via pwdlib); plaintext never
+  touches the database.
+- Login issues a **stateless JWT access token** (HS256, 60-minute
+  lifetime) sent as an `Authorization: Bearer` header.
+- **Logout is client-side**: discard the token. There is deliberately no
+  server-side logout endpoint — stateless tokens cannot be individually
+  revoked without a denylist, and with a 60-minute lifetime the added
+  infrastructure isn't justified for the MVP. Server-side revocation is
+  planned for V1 together with refresh tokens.
+- Deactivating a user takes effect immediately regardless of token
+  lifetime, because every authenticated request re-checks `is_active`.
+
 ### Design principles
 
 - **The backend is the source of truth.** Scoring is a pure domain engine
