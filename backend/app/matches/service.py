@@ -50,6 +50,11 @@ from app.players.models import Player
 from app.scoring.cricket import apply_cricket_dart, initial_marks
 from app.scoring.domain import DartInput, Multiplier
 from app.scoring.engine import apply_dart
+from app.scoring.halve_it import (
+    DARTS_PER_ROUND,
+    apply_halve_it_visit,
+    round_for_number,
+)
 
 MAX_DARTS_PER_TURN = 3
 STARTING_SCORE = 501
@@ -119,11 +124,12 @@ def _start_leg(
     )
     session.add(leg)
     session.flush()
-    game_state = (
-        {str(t): 0 for t in initial_marks()}
-        if match.game_type is GameType.CRICKET
-        else None
-    )
+    if match.game_type is GameType.CRICKET:
+        game_state = {str(t): 0 for t in initial_marks()}
+    elif match.game_type is GameType.HALVE_IT:
+        game_state = {"score": 0, "round": 1}
+    else:
+        game_state = None
     session.add_all(
         [
             LegPlayerState(
@@ -202,6 +208,28 @@ def list_matches(
             }
         )
     return items, total
+
+
+def _halve_it_leg_winner(
+    states: dict[uuid.UUID, LegPlayerState],
+    thrower_id: uuid.UUID,
+    outcome: "_VisitOutcome",
+) -> uuid.UUID | None:
+    """The leg ends when the second player of a round finishes it, the
+    completed round is at least 9, and the scores differ. Ties roll on
+    into extra Red Bull rounds."""
+    completed_round = outcome.new_game_state["round"] - 1
+    my_score = outcome.new_game_state["score"]
+
+    other_id, other_state = next(
+        (pid, s) for pid, s in states.items() if pid != thrower_id
+    )
+    other_score, other_round = halve_it_state(other_state.game_state)
+
+    i_finished_second = other_round == outcome.new_game_state["round"]
+    if not i_finished_second or completed_round < 9 or my_score == other_score:
+        return None
+    return thrower_id if my_score > other_score else other_id
 
 
 def _ensure_can_score(session: Session, user: User, match: Match) -> None:
@@ -326,11 +354,45 @@ def undo_latest_visit(session: Session, user: User, match_id: uuid.UUID) -> Matc
         # Marks aren't reversible per turn; rebuild them by replaying the
         # player's surviving darts — the raw events are the truth.
         state.game_state = _replay_cricket_marks(session, leg.id, latest.player_id)
+    elif match.game_type is GameType.HALVE_IT:
+        state.game_state = _replay_halve_it(session, leg.id, latest.player_id)
     else:
         state.remaining_score = latest.turn_start_score
 
     session.flush()
     return match
+
+
+def _replay_halve_it(
+    session: Session, leg_id: uuid.UUID, player_id: uuid.UUID
+) -> dict:
+    rows = session.execute(
+        select(
+            Turn.turn_number,
+            DartThrow.segment,
+            DartThrow.multiplier,
+            DartThrow.single_band,
+        )
+        .join(Turn, DartThrow.turn_id == Turn.id)
+        .where(Turn.leg_id == leg_id, Turn.player_id == player_id)
+        .order_by(Turn.turn_number, DartThrow.dart_number)
+    ).all()
+
+    visits: dict[int, list[DartInput]] = {}
+    for turn_number, segment, multiplier, band in rows:
+        visits.setdefault(turn_number, []).append(
+            DartInput(
+                segment=None if segment == "MISS" else int(segment),
+                multiplier=Multiplier(multiplier),
+                band=band,
+            )
+        )
+
+    score, round_number = 0, 1
+    for turn_number in sorted(visits):
+        score = apply_halve_it_visit(score, round_number, visits[turn_number]).new_score
+        round_number += 1
+    return {"score": score, "round": round_number}
 
 
 def _replay_cricket_marks(
@@ -358,42 +420,53 @@ def build_match_state(session: Session, match: Match) -> dict:
     current_leg = next(
         (leg for leg in match.legs if leg.status is LegStatus.IN_PROGRESS), None
     )
+    # After completion there is no active leg, but the final boards
+    # (scores/marks) should still come from the last leg played.
+    display_leg = current_leg or (match.legs[-1] if match.legs else None)
 
     states: dict[uuid.UUID, LegPlayerState] = {}
     active_player_id = None
-    if current_leg is not None:
+    if display_leg is not None:
         states = {
             s.player_id: s
             for s in session.scalars(
-                select(LegPlayerState).where(LegPlayerState.leg_id == current_leg.id)
+                select(LegPlayerState).where(LegPlayerState.leg_id == display_leg.id)
             )
         }
+    if current_leg is not None:
         total_turns = sum(s.turns_taken for s in states.values())
         active_player_id = _expected_player_id(current_leg, total_turns)
 
     is_cricket = match.game_type is GameType.CRICKET
+    is_halve_it = match.game_type is GameType.HALVE_IT
     players = []
     for player_id in (match.player1_id, match.player2_id):
         player = session.get(Player, player_id)
         state = states.get(player_id)
-        players.append(
-            {
-                "player_id": player_id,
-                "display_name": player.display_name,
-                "legs_won": sum(
-                    1 for leg in match.legs if leg.winner_player_id == player_id
-                ),
-                "remaining_score": (
-                    state.remaining_score if state and not is_cricket else None
-                ),
-                "marks": (
-                    marks_from_game_state(state.game_state)
-                    if state and is_cricket
-                    else None
-                ),
-                "is_active_turn": player_id == active_player_id,
-            }
-        )
+        entry = {
+            "player_id": player_id,
+            "display_name": player.display_name,
+            "legs_won": sum(
+                1 for leg in match.legs if leg.winner_player_id == player_id
+            ),
+            "remaining_score": (
+                state.remaining_score
+                if state and not is_cricket and not is_halve_it
+                else None
+            ),
+            "marks": (
+                marks_from_game_state(state.game_state)
+                if state and is_cricket
+                else None
+            ),
+            "is_active_turn": player_id == active_player_id,
+        }
+        if is_halve_it and state:
+            score, round_number = halve_it_state(state.game_state)
+            entry["score"] = score
+            entry["round"] = round_number
+            entry["round_target"] = round_for_number(round_number).value
+        players.append(entry)
 
     return {
         "id": match.id,
@@ -530,6 +603,49 @@ def _play_cricket_visit(
     )
 
 
+def halve_it_state(game_state: dict | None) -> tuple[int, int]:
+    """(score, next round number) from stored state."""
+    if not game_state:
+        return 0, 1
+    return int(game_state.get("score", 0)), int(game_state.get("round", 1))
+
+
+def _play_halve_it_visit(
+    state: LegPlayerState, darts: list[DartInput]
+) -> _VisitOutcome:
+    if len(darts) != DARTS_PER_ROUND:
+        raise InvalidTurn("A Halve It round is exactly three darts.")
+
+    score, round_number = halve_it_state(state.game_state)
+    result = apply_halve_it_visit(score, round_number, darts)
+
+    dart_rows = [
+        {
+            "segment": "MISS" if dart.segment is None else str(dart.segment),
+            "multiplier": dart.multiplier.value,
+            "score": dart.score,
+            "is_double": dart.is_double,
+            "single_band": dart.band,
+            "is_checkout_attempt": False,
+            "is_winning_dart": False,
+        }
+        for dart in darts
+    ]
+
+    return _VisitOutcome(
+        # Zeros as in Cricket: the running score lives in game_state and
+        # is fully rebuildable from the banded raw darts (whether a
+        # round halved is derivable the same way, so no flag is stored).
+        turn_start=0,
+        turn_end=0,
+        points=0,
+        is_bust=False,
+        leg_won=False,  # decided against the opponent's state by the caller
+        dart_rows=dart_rows,
+        new_game_state={"score": result.new_score, "round": round_number + 1},
+    )
+
+
 def _expected_player_id(leg: Leg, total_turns_taken: int) -> uuid.UUID:
     """Turns strictly alternate starting with the leg's starting player."""
     match = leg.match
@@ -587,8 +703,14 @@ def record_turn(
 
     if match.game_type is GameType.CRICKET:
         outcome = _play_cricket_visit(state, darts)
+        leg_winner_id = player_id if outcome.leg_won else None
+    elif match.game_type is GameType.HALVE_IT:
+        outcome = _play_halve_it_visit(state, darts)
+        leg_winner_id = _halve_it_leg_winner(states, player_id, outcome)
+        outcome.leg_won = leg_winner_id is not None
     else:
         outcome = _play_x01_visit(state.remaining_score, darts)
+        leg_winner_id = player_id if outcome.leg_won else None
 
     now = datetime.now(timezone.utc)
     turn = Turn(
@@ -615,19 +737,20 @@ def record_turn(
     state.turns_taken += 1
 
     if outcome.leg_won:
-        state.has_won = True
+        # In Halve It the leg's winner is not necessarily the thrower.
+        states[leg_winner_id].has_won = True
         leg.status = LegStatus.COMPLETED
-        leg.winner_player_id = player_id
+        leg.winner_player_id = leg_winner_id
         leg.completed_at = now
 
         legs_won = sum(
             1
             for completed_leg in match.legs
-            if completed_leg.winner_player_id == player_id
+            if completed_leg.winner_player_id == leg_winner_id
         )
         if legs_won >= match.legs_required_to_win:
             match.status = MatchStatus.COMPLETED
-            match.winner_player_id = player_id
+            match.winner_player_id = leg_winner_id
             match.completed_at = now
 
     session.flush()

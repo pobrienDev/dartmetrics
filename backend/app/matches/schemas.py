@@ -37,6 +37,9 @@ class PlayerStateResponse(BaseModel):
     legs_won: int
     remaining_score: int | None  # x01 only; None otherwise
     marks: dict[int, int] | None = None  # cricket only: target -> 0..3
+    score: int | None = None  # halve_it only
+    round: int | None = None  # halve_it only: 1-based next round
+    round_target: str | None = None  # halve_it only, e.g. "outer_black"
     is_active_turn: bool
 
 
@@ -86,11 +89,13 @@ class MatchListResponse(BaseModel):
 
 class DartRequest(BaseModel):
     """One dart as JSON, e.g. {"segment": 20, "multiplier": "triple"}
-    or {"multiplier": "miss"}. Board legality is checked here, so an
-    impossible dart (triple 25, double 21) is a 422 validation error."""
+    or {"multiplier": "miss"}. Halve It band rounds also send
+    band: "inner" | "outer" on numbered singles. Board legality is
+    checked here, so an impossible dart is a 422 validation error."""
 
     segment: int | None = None
     multiplier: Literal["miss", "single", "double", "triple"]
+    band: Literal["inner", "outer"] | None = None
 
     @model_validator(mode="after")
     def must_be_a_real_dart(self) -> "DartRequest":
@@ -99,7 +104,9 @@ class DartRequest(BaseModel):
 
     def to_dart_input(self) -> DartInput:
         return DartInput(
-            segment=self.segment, multiplier=Multiplier[self.multiplier.upper()]
+            segment=self.segment,
+            multiplier=Multiplier[self.multiplier.upper()],
+            band=self.band,
         )
 
 
