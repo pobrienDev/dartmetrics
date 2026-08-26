@@ -14,6 +14,7 @@ from app.auth.router import me_router
 from app.auth.router import router as auth_router
 from app.matches.router import router as matches_router
 from app.players.router import router as players_router
+from app.statistics.router import router as statistics_router
 from app.common.errors import DomainError
 from app.config import get_settings
 from app.db import get_db
@@ -31,6 +32,7 @@ def create_app() -> FastAPI:
     app.include_router(me_router)
     app.include_router(players_router)
     app.include_router(matches_router)
+    app.include_router(statistics_router)
 
     @app.exception_handler(DomainError)
     def handle_domain_error(request: Request, exc: DomainError) -> JSONResponse:
