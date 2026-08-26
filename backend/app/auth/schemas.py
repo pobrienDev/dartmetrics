@@ -18,6 +18,16 @@ class RegisterRequest(BaseModel):
     display_name: str = Field(min_length=1, max_length=100)
 
 
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
 class UserResponse(BaseModel):
     # from_attributes lets FastAPI build this straight from the ORM User
     model_config = ConfigDict(from_attributes=True)

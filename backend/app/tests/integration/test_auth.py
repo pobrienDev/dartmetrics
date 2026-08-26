@@ -81,3 +81,49 @@ def test_duplicate_email_returns_409_envelope(client):
 def test_invalid_input_is_rejected_with_422(client, override):
     response = client.post("/api/v1/auth/register", json={**VALID_BODY, **override})
     assert response.status_code == 422
+
+
+def test_login_returns_decodable_token(client, db_session):
+    created = client.post("/api/v1/auth/register", json=VALID_BODY).json()
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "Pat@Example.com", "password": VALID_BODY["password"]},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["token_type"] == "bearer"
+
+    from app.common.security import decode_access_token
+
+    assert str(decode_access_token(body["access_token"])) == created["id"]
+
+
+@pytest.mark.parametrize(
+    "email, password",
+    [
+        ("pat@example.com", "wrong password entirely"),
+        ("nobody@example.com", "correct horse battery staple"),
+    ],
+)
+def test_bad_credentials_get_identical_401(client, email, password):
+    client.post("/api/v1/auth/register", json=VALID_BODY)
+    response = client.post(
+        "/api/v1/auth/login", json={"email": email, "password": password}
+    )
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "INVALID_CREDENTIALS"
+    assert response.json()["error"]["message"] == "Incorrect email or password."
+
+
+def test_deactivated_account_cannot_login(client, db_session):
+    client.post("/api/v1/auth/register", json=VALID_BODY)
+    user = db_session.scalar(select(User).where(User.email == "pat@example.com"))
+    user.is_active = False
+    db_session.flush()
+
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": VALID_BODY["email"], "password": VALID_BODY["password"]},
+    )
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "INVALID_CREDENTIALS"

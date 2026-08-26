@@ -37,3 +37,8 @@ class InvalidTurn(DomainError):
 class EmailAlreadyRegistered(DomainError):
     code = "EMAIL_ALREADY_REGISTERED"
     http_status = 409
+
+
+class InvalidCredentials(DomainError):
+    code = "INVALID_CREDENTIALS"
+    http_status = 401

@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     )
 
     database_url: str
+    secret_key: str  # signs JWTs; generate with secrets.token_urlsafe(32)
+    access_token_expire_minutes: int = 60
     app_name: str = "DartMetrics"
     debug: bool = False
 

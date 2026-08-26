@@ -4,7 +4,13 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.auth import service
-from app.auth.schemas import RegisterRequest, UserResponse
+from app.auth.schemas import (
+    LoginRequest,
+    RegisterRequest,
+    TokenResponse,
+    UserResponse,
+)
+from app.common.security import create_access_token
 from app.db import get_db
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -18,3 +24,10 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)) -> UserRespon
     )
     db.commit()
     return user
+
+
+@router.post("/login", response_model=TokenResponse)
+def login(body: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
+    """Exchange valid credentials for a bearer access token."""
+    user = service.authenticate_user(db, email=body.email, password=body.password)
+    return TokenResponse(access_token=create_access_token(user.id))
