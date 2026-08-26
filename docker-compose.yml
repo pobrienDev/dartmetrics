@@ -1,3 +1,7 @@
+# Pinned so the Compose project no longer depends on the folder name
+# (a folder rename once orphaned the database container).
+name: dartmetrics
+
 services:
   db:
     image: postgres:16
@@ -18,3 +22,6 @@ services:
 
 volumes:
   dartmetrics_pgdata:
+    # Override locally (PGDATA_VOLUME in .env) to keep using a volume
+    # created under an older project name.
+    name: ${PGDATA_VOLUME:-dartmetrics_pgdata}
