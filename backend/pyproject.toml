@@ -15,5 +15,9 @@ dev = [
     "pytest>=8.0",
 ]
 
+# Only app/ is the installable package; alembic/ is migration scripts.
+[tool.setuptools.packages.find]
+include = ["app*"]
+
 [tool.pytest.ini_options]
 testpaths = ["app/tests"]
