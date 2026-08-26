@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+*.egg-info/
 
 # Environment / secrets — never commit these
 .env
