@@ -38,6 +38,16 @@ def create_player(
     return player
 
 
+def list_players(
+    session: Session, query: str | None, limit: int
+) -> list[Player]:
+    """Active players, optionally filtered by name, for opponent pickers."""
+    stmt = select(Player).where(Player.is_active.is_(True))
+    if query:
+        stmt = stmt.where(Player.display_name.ilike(f"%{query}%"))
+    return list(session.scalars(stmt.order_by(Player.display_name).limit(limit)))
+
+
 def get_player(session: Session, player_id: uuid.UUID) -> Player:
     player = session.get(Player, player_id)
     if player is None:

@@ -118,6 +118,28 @@ def test_players_require_authentication(client):
     assert client.get(f"/api/v1/players/{uuid.uuid4()}").status_code == 401
 
 
+def test_list_players_with_search(client, headers):
+    client.post("/api/v1/players", json={"display_name": "Patrick"}, headers=headers)
+    for name in ("Guest Gary", "Guest Gina"):
+        client.post(
+            "/api/v1/players",
+            json={"display_name": name, "is_guest": True},
+            headers=headers,
+        )
+
+    everyone = client.get("/api/v1/players", headers=headers).json()
+    assert [p["display_name"] for p in everyone] == [
+        "Guest Gary",
+        "Guest Gina",
+        "Patrick",
+    ]
+
+    guests = client.get("/api/v1/players?q=guest", headers=headers).json()
+    assert [p["display_name"] for p in guests] == ["Guest Gary", "Guest Gina"]
+
+    assert client.get("/api/v1/players").status_code == 401
+
+
 def test_empty_display_name_rejected(client, headers):
     response = client.post(
         "/api/v1/players", json={"display_name": ""}, headers=headers

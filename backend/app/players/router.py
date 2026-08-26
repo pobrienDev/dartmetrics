@@ -2,7 +2,7 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user
@@ -34,6 +34,17 @@ def create_player(
     )
     db.commit()
     return player
+
+
+@router.get("", response_model=list[PlayerResponse])
+def list_players(
+    q: str | None = Query(default=None, max_length=100),
+    limit: int = Query(default=50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[PlayerResponse]:
+    """Active players for opponent selection, optionally filtered by name."""
+    return service.list_players(db, query=q, limit=limit)
 
 
 @router.get("/{player_id}", response_model=PlayerResponse)
