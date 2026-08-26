@@ -25,6 +25,32 @@ class HeadToHeadResponse(BaseModel):
     last_played_at: datetime | None = None
 
 
+class PlayerMatchSummary(BaseModel):
+    player_id: uuid.UUID
+    display_name: str
+    legs_won: int
+    darts_thrown: int
+    points_scored: int
+    three_dart_average: float | None
+    highest_visit: int | None
+    count_100_plus: int
+    count_140_plus: int
+    count_180: int
+    checkout_attempts: int
+    checkout_successes: int
+    checkout_percentage: float | None
+
+
+class MatchSummaryResponse(BaseModel):
+    id: uuid.UUID
+    status: str
+    best_of_legs: int
+    winner_player_id: uuid.UUID | None
+    started_at: datetime | None
+    completed_at: datetime | None
+    players: list[PlayerMatchSummary]
+
+
 class PlayerStatsResponse(BaseModel):
     player_id: uuid.UUID
     display_name: str

@@ -89,6 +89,19 @@ def record_visit(
     return {"turn": turn, "state": state}
 
 
+@router.get("/{match_id}/summary")
+def get_match_summary(
+    match_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Per-player performance summary for one match (live or final)."""
+    from app.statistics.schemas import MatchSummaryResponse
+    from app.statistics.service import match_summary
+
+    return MatchSummaryResponse(**match_summary(db, match_id))
+
+
 @router.post("/{match_id}/abandon", response_model=MatchStateResponse)
 def abandon_match(
     match_id: uuid.UUID,

@@ -87,6 +87,95 @@ def head_to_head(
     }
 
 
+def match_summary(session: Session, match_id: uuid.UUID) -> dict:
+    """Per-player performance within one match, from its raw turns.
+
+    Works for matches in any status — for an in-progress match it is
+    the live summary so far.
+    """
+    from app.matches.service import get_match
+
+    match = get_match(session, match_id)
+
+    players = []
+    for player_id in (match.player1_id, match.player2_id):
+        player = get_player(session, player_id)
+        in_match = Turn.player_id == player_id, Leg.match_id == match.id
+
+        points, highest, c100, c140, c180 = session.execute(
+            select(
+                func.coalesce(func.sum(Turn.points_scored), 0),
+                func.max(case((Turn.is_bust.is_(False), Turn.points_scored))),
+                func.count(
+                    case(
+                        (
+                            Turn.is_bust.is_(False)
+                            & Turn.points_scored.between(100, 139),
+                            1,
+                        )
+                    )
+                ),
+                func.count(
+                    case(
+                        (
+                            Turn.is_bust.is_(False)
+                            & Turn.points_scored.between(140, 179),
+                            1,
+                        )
+                    )
+                ),
+                func.count(
+                    case((Turn.is_bust.is_(False) & (Turn.points_scored == 180), 1))
+                ),
+            )
+            .join(Leg, Turn.leg_id == Leg.id)
+            .where(*in_match)
+        ).one()
+
+        darts, attempts, successes = session.execute(
+            select(
+                func.count(DartThrow.id),
+                func.count(case((DartThrow.is_checkout_attempt.is_(True), 1))),
+                func.count(case((DartThrow.is_winning_dart.is_(True), 1))),
+            )
+            .join(Turn, DartThrow.turn_id == Turn.id)
+            .join(Leg, Turn.leg_id == Leg.id)
+            .where(*in_match)
+        ).one()
+
+        players.append(
+            {
+                "player_id": player.id,
+                "display_name": player.display_name,
+                "legs_won": sum(
+                    1 for leg in match.legs if leg.winner_player_id == player_id
+                ),
+                "darts_thrown": darts,
+                "points_scored": points,
+                "three_dart_average": _round(points / darts * 3 if darts else None),
+                "highest_visit": highest,
+                "count_100_plus": c100,
+                "count_140_plus": c140,
+                "count_180": c180,
+                "checkout_attempts": attempts,
+                "checkout_successes": successes,
+                "checkout_percentage": _round(
+                    successes / attempts * 100 if attempts else None
+                ),
+            }
+        )
+
+    return {
+        "id": match.id,
+        "status": match.status,
+        "best_of_legs": match.best_of_legs,
+        "winner_player_id": match.winner_player_id,
+        "started_at": match.started_at,
+        "completed_at": match.completed_at,
+        "players": players,
+    }
+
+
 def player_stats(session: Session, player_id: uuid.UUID) -> dict:
     player: Player = get_player(session, player_id)
 

@@ -248,6 +248,59 @@ def test_head_to_head_unknown_player_is_404(client, setup):
     assert response.status_code == 404
 
 
+def test_match_summary_after_nine_darter(client, setup):
+    match_id = play_nine_darter(client, setup)
+    response = client.get(
+        f"/api/v1/matches/{match_id}/summary", headers=setup["headers"]
+    )
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["status"] == "completed"
+    assert body["winner_player_id"] == setup["own"]["id"]
+
+    by_id = {p["player_id"]: p for p in body["players"]}
+    winner = by_id[setup["own"]["id"]]
+    assert winner["legs_won"] == 1
+    assert winner["darts_thrown"] == 9
+    assert winner["points_scored"] == 501
+    assert winner["three_dart_average"] == 167.0
+    assert winner["count_180"] == 2
+    assert winner["checkout_percentage"] == 100.0
+
+    loser = by_id[setup["guest"]["id"]]
+    assert loser["legs_won"] == 0
+    assert loser["three_dart_average"] == 60.0
+    assert loser["checkout_percentage"] is None
+
+
+def test_match_summary_works_live_mid_match(client, setup):
+    match = client.post(
+        "/api/v1/matches",
+        json={"opponent_player_id": setup["guest"]["id"], "best_of_legs": 3},
+        headers=setup["headers"],
+    ).json()
+    client.post(
+        f"/api/v1/matches/{match['id']}/visits",
+        json={"player_id": setup["own"]["id"], "darts": [T20] * 3},
+        headers=setup["headers"],
+    )
+    body = client.get(
+        f"/api/v1/matches/{match['id']}/summary", headers=setup["headers"]
+    ).json()
+    assert body["status"] == "in_progress"
+    by_id = {p["player_id"]: p for p in body["players"]}
+    assert by_id[setup["own"]["id"]]["points_scored"] == 180
+    assert by_id[setup["guest"]["id"]]["darts_thrown"] == 0
+
+
+def test_match_summary_unknown_match_is_404(client, setup):
+    response = client.get(
+        f"/api/v1/matches/{uuid.uuid4()}/summary", headers=setup["headers"]
+    )
+    assert response.status_code == 404
+
+
 def test_stats_for_unknown_player_is_404(client, setup):
     response = client.get(
         f"/api/v1/players/{uuid.uuid4()}/stats", headers=setup["headers"]
