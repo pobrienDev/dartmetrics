@@ -7,7 +7,7 @@ Run locally with:
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.auth.router import me_router
@@ -43,6 +43,22 @@ def create_app() -> FastAPI:
             status_code=exc.http_status,
             content={"error": {"code": exc.code, "message": str(exc)}},
             headers=headers,
+        )
+
+    @app.exception_handler(IntegrityError)
+    def handle_integrity_error(request: Request, exc: IntegrityError) -> JSONResponse:
+        """Backstop: a database constraint rejected a write that raced
+        past application validation (e.g. two visits recorded at the
+        same instant). The transaction rolled back; clients should
+        refetch state and retry. Never a raw 500."""
+        return JSONResponse(
+            status_code=409,
+            content={
+                "error": {
+                    "code": "CONFLICT",
+                    "message": "The action conflicted with another change; refresh and retry.",
+                }
+            },
         )
 
     @app.get("/api/v1/health", tags=["system"])

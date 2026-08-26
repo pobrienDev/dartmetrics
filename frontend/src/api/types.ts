@@ -95,3 +95,25 @@ export interface MatchListResponse {
   limit: number
   offset: number
 }
+
+export interface PlayerStats {
+  player_id: string
+  display_name: string
+  matches_played: number
+  matches_won: number
+  win_percentage: number | null
+  legs_played: number
+  legs_won: number
+  leg_win_percentage: number | null
+  best_leg_darts: number | null
+  total_darts: number
+  three_dart_average: number | null
+  first_nine_average: number | null
+  highest_visit: number | null
+  count_100_plus: number
+  count_140_plus: number
+  count_180: number
+  checkout_attempts: number
+  checkout_successes: number
+  checkout_percentage: number | null
+}

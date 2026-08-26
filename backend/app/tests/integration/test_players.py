@@ -119,23 +119,28 @@ def test_players_require_authentication(client):
 
 
 def test_list_players_with_search(client, headers):
-    client.post("/api/v1/players", json={"display_name": "Patrick"}, headers=headers)
-    for name in ("Guest Gary", "Guest Gina"):
+    # Unique names: the dev database may hold other committed players,
+    # so assertions must only concern rows this test created.
+    for name, guest in [
+        ("Zetest Patrick", False),
+        ("Zetest Gary", True),
+        ("Zetest Gina", True),
+    ]:
         client.post(
             "/api/v1/players",
-            json={"display_name": name, "is_guest": True},
+            json={"display_name": name, "is_guest": guest},
             headers=headers,
         )
 
-    everyone = client.get("/api/v1/players", headers=headers).json()
-    assert [p["display_name"] for p in everyone] == [
-        "Guest Gary",
-        "Guest Gina",
-        "Patrick",
+    mine = client.get("/api/v1/players?q=zetest", headers=headers).json()
+    assert [p["display_name"] for p in mine] == [
+        "Zetest Gary",
+        "Zetest Gina",
+        "Zetest Patrick",
     ]
 
-    guests = client.get("/api/v1/players?q=guest", headers=headers).json()
-    assert [p["display_name"] for p in guests] == ["Guest Gary", "Guest Gina"]
+    narrower = client.get("/api/v1/players?q=zetest g", headers=headers).json()
+    assert [p["display_name"] for p in narrower] == ["Zetest Gary", "Zetest Gina"]
 
     assert client.get("/api/v1/players").status_code == 401
 

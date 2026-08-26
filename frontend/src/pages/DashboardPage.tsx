@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 
 import { api } from '../api/client'
-import type { MatchListResponse } from '../api/types'
+import type { MatchListResponse, PlayerResponse, PlayerStats } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 
 export function DashboardPage() {
@@ -15,6 +15,52 @@ export function DashboardPage() {
     queryKey: ['matches', 'in_progress'],
     queryFn: () => api<MatchListResponse>('/api/v1/matches?status=in_progress'),
   })
+
+  // The user's own player profile (if created), then their career stats.
+  const players = useQuery({
+    queryKey: ['players'],
+    queryFn: () => api<PlayerResponse[]>('/api/v1/players'),
+  })
+  const myPlayer = players.data?.find((p) => p.user_id === user?.id)
+  const stats = useQuery({
+    queryKey: ['stats', myPlayer?.id],
+    queryFn: () => api<PlayerStats>(`/api/v1/players/${myPlayer!.id}/stats`),
+    enabled: myPlayer !== undefined,
+  })
+
+  const kpis = [
+    {
+      label: '3-dart average',
+      value: stats.data?.three_dart_average?.toFixed(1) ?? '—',
+      hint: stats.data ? `${stats.data.total_darts} darts thrown` : undefined,
+    },
+    {
+      label: 'Win rate',
+      value:
+        stats.data?.win_percentage !== null && stats.data?.win_percentage !== undefined
+          ? `${stats.data.win_percentage.toFixed(0)}%`
+          : '—',
+      hint: stats.data
+        ? `${stats.data.matches_won}–${stats.data.matches_played - stats.data.matches_won}`
+        : undefined,
+    },
+    {
+      label: 'Checkout %',
+      value:
+        stats.data?.checkout_percentage !== null &&
+        stats.data?.checkout_percentage !== undefined
+          ? `${stats.data.checkout_percentage.toFixed(0)}%`
+          : '—',
+      hint: stats.data
+        ? `${stats.data.checkout_successes}/${stats.data.checkout_attempts} attempts`
+        : undefined,
+    },
+    {
+      label: '180s',
+      value: stats.data ? String(stats.data.count_180) : '—',
+      hint: stats.data ? `high visit ${stats.data.highest_visit ?? '—'}` : undefined,
+    },
+  ]
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -71,10 +117,17 @@ export function DashboardPage() {
         )}
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {['3-dart average', 'Win rate', 'Checkout %', '180s'].map((label) => (
-            <div key={label} className="rounded-xl bg-white p-5 shadow-sm">
-              <p className="text-sm text-gray-500">{label}</p>
-              <p className="mt-1 text-2xl font-bold text-gray-300">—</p>
+          {kpis.map((kpi) => (
+            <div key={kpi.label} className="rounded-xl bg-white p-5 shadow-sm">
+              <p className="text-sm text-gray-500">{kpi.label}</p>
+              <p
+                className={`mt-1 text-2xl font-bold ${
+                  kpi.value === '—' ? 'text-gray-300' : 'text-gray-900'
+                }`}
+              >
+                {kpi.value}
+              </p>
+              {kpi.hint && <p className="mt-0.5 text-xs text-gray-400">{kpi.hint}</p>}
             </div>
           ))}
         </div>

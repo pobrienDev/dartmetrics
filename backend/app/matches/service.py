@@ -406,10 +406,16 @@ def record_turn(
     if player_id not in (match.player1_id, match.player2_id):
         raise PlayerNotInMatch(f"Player {player_id} is not in this match.")
 
+    # FOR UPDATE serializes concurrent scoring on the same leg (dev
+    # plan 8.2: "lock/read active match + leg"). A second concurrent
+    # visit waits here, then sees the updated turn count and gets a
+    # correct turn-order verdict instead of colliding on turn_number.
     states = {
         s.player_id: s
         for s in session.scalars(
-            select(LegPlayerState).where(LegPlayerState.leg_id == leg.id)
+            select(LegPlayerState)
+            .where(LegPlayerState.leg_id == leg.id)
+            .with_for_update()
         )
     }
     state = states[player_id]
