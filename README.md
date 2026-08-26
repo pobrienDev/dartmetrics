@@ -66,6 +66,7 @@ docker compose up -d
 # 3. Backend environment
 cd backend
 python -m venv .venv
+.venv\Scripts\python -m pip install --upgrade pip
 .venv\Scripts\pip install -e . --group dev
 
 # 4. Apply database migrations
