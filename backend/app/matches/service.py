@@ -32,6 +32,7 @@ from app.common.errors import (
     NotPlayersTurn,
     PlayerNotFound,
     PlayerNotInMatch,
+    UndoNotAvailable,
 )
 from app.matches.models import (
     DartThrow,
@@ -181,6 +182,52 @@ def record_match_visit(
 
     session.flush()
     return turn, match
+
+
+def undo_latest_visit(session: Session, user: User, match_id: uuid.UUID) -> Match:
+    """Remove the most recent visit in the active leg and restore the
+    scoreboard (spec 13.4: latest active-leg visit only — completed
+    legs are immutable in the MVP)."""
+    match = get_match(session, match_id)
+    _ensure_can_score(session, user, match)
+
+    if match.status is not MatchStatus.IN_PROGRESS:
+        raise MatchNotActive(f"Match is {match.status}; undo is not allowed.")
+
+    leg = next(
+        (leg for leg in match.legs if leg.status is LegStatus.IN_PROGRESS), None
+    )
+    if leg is None:
+        raise LegNotActive("The match has no active leg.")
+
+    latest = session.scalars(
+        select(Turn)
+        .where(Turn.leg_id == leg.id)
+        .order_by(Turn.turn_number.desc())
+        .limit(1)
+    ).first()
+    if latest is None:
+        raise UndoNotAvailable(
+            "No visit exists in the active leg to undo. Completed legs "
+            "cannot be modified."
+        )
+
+    state = session.scalar(
+        select(LegPlayerState).where(
+            LegPlayerState.leg_id == leg.id,
+            LegPlayerState.player_id == latest.player_id,
+        )
+    )
+    state.remaining_score = latest.turn_start_score
+    state.darts_thrown -= len(latest.dart_throws)
+    state.turns_taken -= 1
+
+    for dart in latest.dart_throws:
+        session.delete(dart)
+    session.delete(latest)
+
+    session.flush()
+    return match
 
 
 def build_match_state(session: Session, match: Match) -> dict:

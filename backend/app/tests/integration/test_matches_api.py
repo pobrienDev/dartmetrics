@@ -287,6 +287,81 @@ def test_four_darts_is_422(client, setup):
     visit(client, setup, match["id"], setup["own"]["id"], [S20] * 4, expect=422)
 
 
+# --- Undo ------------------------------------------------------------------
+
+
+def undo(client, setup, match_id, expect=200):
+    response = client.delete(
+        f"/api/v1/matches/{match_id}/visits/latest", headers=setup["headers"]
+    )
+    assert response.status_code == expect, response.text
+    return response.json()
+
+
+def test_undo_restores_scoreboard_and_turn(client, setup):
+    match = make_match(client, setup)
+    own = setup["own"]["id"]
+
+    visit(client, setup, match["id"], own, [T20] * 3)  # 321, guest's turn
+    state = undo(client, setup, match["id"])
+
+    me_state = [p for p in state["players"] if p["player_id"] == own][0]
+    assert me_state["remaining_score"] == 501
+    assert me_state["is_active_turn"] is True  # my turn again
+
+    # Re-scoring after undo works (turn number freed up)
+    body = visit(client, setup, match["id"], own, [T19] * 3)
+    assert body["turn"]["turn_number"] == 1
+    assert body["turn"]["points_scored"] == 171
+
+
+def test_undo_a_bust_restores_dart_counts(client, setup):
+    match = make_match(client, setup)
+    own, guest = setup["own"]["id"], setup["guest"]["id"]
+    visit(client, setup, match["id"], own, [T20] * 3)
+    visit(client, setup, match["id"], guest, [S20] * 3)
+    visit(client, setup, match["id"], own, [T20] * 3)     # 141
+    visit(client, setup, match["id"], guest, [S20] * 3)
+    visit(client, setup, match["id"], own, [T20, T20, {"segment": 7, "multiplier": "triple"}])  # bust
+
+    state = undo(client, setup, match["id"])
+    me_state = [p for p in state["players"] if p["player_id"] == own][0]
+    assert me_state["remaining_score"] == 141
+    assert me_state["is_active_turn"] is True
+
+
+def test_undo_with_no_visits_is_409(client, setup):
+    match = make_match(client, setup)
+    body = undo(client, setup, match["id"], expect=409)
+    assert body["error"]["code"] == "UNDO_NOT_AVAILABLE"
+
+
+def test_leg_winning_checkout_is_not_undoable(client, setup):
+    """Once a checkout completes a leg, the fresh next leg has no
+    visits — the completed leg is immutable (spec 13.4)."""
+    match = make_match(client, setup, best_of=3)
+    own, guest = setup["own"]["id"], setup["guest"]["id"]
+    visit(client, setup, match["id"], own, [T20] * 3)
+    visit(client, setup, match["id"], guest, [S20] * 3)
+    visit(client, setup, match["id"], own, [T20] * 3)
+    visit(client, setup, match["id"], guest, [S20] * 3)
+    visit(client, setup, match["id"], own, [T20, T19, D12])  # leg 1 won
+
+    body = undo(client, setup, match["id"], expect=409)
+    assert body["error"]["code"] == "UNDO_NOT_AVAILABLE"
+
+
+def test_non_participant_cannot_undo(client, setup):
+    match = make_match(client, setup)
+    visit(client, setup, match["id"], setup["own"]["id"], [T20] * 3)
+    outsider_headers = signup(client, "outsider@example.com", "Outsider")
+    response = client.delete(
+        f"/api/v1/matches/{match['id']}/visits/latest", headers=outsider_headers
+    )
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "MATCH_ACCESS_DENIED"
+
+
 def test_scoring_completed_match_is_409(client, setup):
     match = make_match(client, setup, best_of=1)
     own, guest = setup["own"]["id"], setup["guest"]["id"]

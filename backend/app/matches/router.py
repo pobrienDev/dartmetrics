@@ -67,3 +67,16 @@ def record_visit(
     state = service.build_match_state(db, match)
     db.commit()
     return {"turn": turn, "state": state}
+
+
+@router.delete("/{match_id}/visits/latest", response_model=MatchStateResponse)
+def undo_latest_visit(
+    match_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> MatchStateResponse:
+    """Undo the most recent visit in the active leg."""
+    match = service.undo_latest_visit(db, user=current_user, match_id=match_id)
+    state = service.build_match_state(db, match)
+    db.commit()
+    return state

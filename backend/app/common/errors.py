@@ -81,3 +81,8 @@ class InvalidMatchSetup(DomainError):
 class MatchAccessDenied(DomainError):
     code = "MATCH_ACCESS_DENIED"
     http_status = 403
+
+
+class UndoNotAvailable(DomainError):
+    code = "UNDO_NOT_AVAILABLE"
+    http_status = 409
