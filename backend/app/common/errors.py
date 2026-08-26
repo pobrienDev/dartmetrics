@@ -8,14 +8,17 @@ anything about HTTP.
 
 class DomainError(Exception):
     code = "DOMAIN_ERROR"
+    http_status = 400
 
 
 class MatchNotActive(DomainError):
     code = "MATCH_NOT_ACTIVE"
+    http_status = 409
 
 
 class LegNotActive(DomainError):
     code = "LEG_NOT_ACTIVE"
+    http_status = 409
 
 
 class PlayerNotInMatch(DomainError):
@@ -24,7 +27,13 @@ class PlayerNotInMatch(DomainError):
 
 class NotPlayersTurn(DomainError):
     code = "NOT_PLAYER_TURN"
+    http_status = 409
 
 
 class InvalidTurn(DomainError):
     code = "INVALID_TURN"
+
+
+class EmailAlreadyRegistered(DomainError):
+    code = "EMAIL_ALREADY_REGISTERED"
+    http_status = 409

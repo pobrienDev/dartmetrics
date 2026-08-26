@@ -4,12 +4,14 @@ Run locally with:
     uvicorn app.main:app --reload
 """
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.auth.router import router as auth_router
+from app.common.errors import DomainError
 from app.config import get_settings
 from app.db import get_db
 
@@ -21,6 +23,17 @@ def create_app() -> FastAPI:
         version="0.1.0",
         description="Darts 501 scoring and player analytics.",
     )
+
+    app.include_router(auth_router)
+
+    @app.exception_handler(DomainError)
+    def handle_domain_error(request: Request, exc: DomainError) -> JSONResponse:
+        """Every domain rule violation becomes the plan's error envelope:
+        {"error": {"code": ..., "message": ...}} with a suitable status."""
+        return JSONResponse(
+            status_code=exc.http_status,
+            content={"error": {"code": exc.code, "message": str(exc)}},
+        )
 
     @app.get("/api/v1/health", tags=["system"])
     def health() -> dict[str, str]:
