@@ -1,10 +1,20 @@
-// Dashboard shell: proves the authenticated round-trip works and
-// gives later phases (KPIs, recent matches) a home.
+// Dashboard: KPI placeholders, New Match entry point, and matches to
+// resume (GET /matches?status=in_progress).
 
+import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
+
+import { api } from '../api/client'
+import type { MatchListResponse } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 
 export function DashboardPage() {
   const { user, logout } = useAuth()
+
+  const ongoing = useQuery({
+    queryKey: ['matches', 'in_progress'],
+    queryFn: () => api<MatchListResponse>('/api/v1/matches?status=in_progress'),
+  })
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -24,9 +34,41 @@ export function DashboardPage() {
       </header>
 
       <main className="mx-auto max-w-5xl px-6 py-8">
-        <h2 className="mb-6 text-lg font-semibold text-gray-900">
-          Welcome back, {user?.display_name}
-        </h2>
+        <div className="mb-6 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-900">
+            Welcome back, {user?.display_name}
+          </h2>
+          <Link
+            to="/matches/new"
+            className="rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-700"
+          >
+            + New Match
+          </Link>
+        </div>
+
+        {ongoing.data && ongoing.data.items.length > 0 && (
+          <section className="mb-8">
+            <h3 className="mb-2 text-sm font-medium text-gray-500">Resume a match</h3>
+            <ul className="space-y-2">
+              {ongoing.data.items.map((match) => (
+                <li key={match.id}>
+                  <Link
+                    to={`/matches/${match.id}`}
+                    className="flex items-center justify-between rounded-xl bg-white px-4 py-3 shadow-sm hover:bg-emerald-50"
+                  >
+                    <span className="font-medium text-gray-800">
+                      {match.players.map((p) => p.display_name).join(' vs ')}
+                    </span>
+                    <span className="text-sm text-gray-500">
+                      {match.players.map((p) => p.legs_won).join('–')} · best of{' '}
+                      {match.best_of_legs}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {['3-dart average', 'Win rate', 'Checkout %', '180s'].map((label) => (
@@ -36,10 +78,6 @@ export function DashboardPage() {
             </div>
           ))}
         </div>
-
-        <p className="mt-8 text-sm text-gray-400">
-          Match creation and live scoring arrive in the next phase.
-        </p>
       </main>
     </div>
   )
