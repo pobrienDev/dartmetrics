@@ -86,3 +86,7 @@ class MatchAccessDenied(DomainError):
 class UndoNotAvailable(DomainError):
     code = "UNDO_NOT_AVAILABLE"
     http_status = 409
+
+
+class InvalidRequest(DomainError):
+    code = "INVALID_REQUEST"

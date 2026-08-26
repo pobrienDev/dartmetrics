@@ -23,6 +23,7 @@ import uuid
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
+from app.common.errors import InvalidRequest
 from app.matches.models import DartThrow, Leg, LegStatus, Match, MatchStatus, Turn
 from app.players.models import Player
 from app.players.service import get_player
@@ -30,6 +31,60 @@ from app.players.service import get_player
 
 def _round(value: float | None) -> float | None:
     return None if value is None else round(value, 2)
+
+
+def head_to_head(
+    session: Session, player_id: uuid.UUID, opponent_id: uuid.UUID
+) -> dict:
+    """Completed-match record between two players, from either side."""
+    if player_id == opponent_id:
+        raise InvalidRequest("Head-to-head requires two different players.")
+
+    player = get_player(session, player_id)
+    opponent = get_player(session, opponent_id)
+
+    pair = (
+        (Match.player1_id == player_id) & (Match.player2_id == opponent_id)
+    ) | ((Match.player1_id == opponent_id) & (Match.player2_id == player_id))
+
+    matches_played, player_wins, opponent_wins, last_played_at = session.execute(
+        select(
+            func.count(Match.id),
+            func.count(case((Match.winner_player_id == player_id, 1))),
+            func.count(case((Match.winner_player_id == opponent_id, 1))),
+            func.max(Match.completed_at),
+        ).where(Match.status == MatchStatus.COMPLETED, pair)
+    ).one()
+
+    player_legs, opponent_legs = session.execute(
+        select(
+            func.count(case((Leg.winner_player_id == player_id, 1))),
+            func.count(case((Leg.winner_player_id == opponent_id, 1))),
+        )
+        .join(Match, Leg.match_id == Match.id)
+        .where(
+            Leg.status == LegStatus.COMPLETED,
+            Match.status == MatchStatus.COMPLETED,
+            pair,
+        )
+    ).one()
+
+    return {
+        "player": {
+            "player_id": player.id,
+            "display_name": player.display_name,
+            "matches_won": player_wins,
+            "legs_won": player_legs,
+        },
+        "opponent": {
+            "player_id": opponent.id,
+            "display_name": opponent.display_name,
+            "matches_won": opponent_wins,
+            "legs_won": opponent_legs,
+        },
+        "matches_played": matches_played,
+        "last_played_at": last_played_at,
+    }
 
 
 def player_stats(session: Session, player_id: uuid.UUID) -> dict:

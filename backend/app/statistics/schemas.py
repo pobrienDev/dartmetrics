@@ -6,8 +6,23 @@ as 0% (Appendix C).
 """
 
 import uuid
+from datetime import datetime
 
 from pydantic import BaseModel
+
+
+class HeadToHeadSide(BaseModel):
+    player_id: uuid.UUID
+    display_name: str
+    matches_won: int
+    legs_won: int
+
+
+class HeadToHeadResponse(BaseModel):
+    player: HeadToHeadSide
+    opponent: HeadToHeadSide
+    matches_played: int
+    last_played_at: datetime | None = None
 
 
 class PlayerStatsResponse(BaseModel):

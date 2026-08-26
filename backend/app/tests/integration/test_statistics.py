@@ -164,6 +164,90 @@ def test_empty_dataset_has_no_divisions_by_zero(client, setup):
     assert stats["count_180"] == 0
 
 
+def play_match(client, setup, winner_id, best_of=1):
+    """Best-of-1 where winner_id takes the nine-darter."""
+    own, guest = setup["own"]["id"], setup["guest"]["id"]
+    loser = guest if winner_id == own else own
+    match = client.post(
+        "/api/v1/matches",
+        json={
+            "opponent_player_id": guest,
+            "best_of_legs": best_of,
+            "starting_player_id": winner_id,
+        },
+        headers=setup["headers"],
+    ).json()
+    for player, darts in [
+        (winner_id, [T20] * 3),
+        (loser, [S20] * 3),
+        (winner_id, [T20] * 3),
+        (loser, [S20] * 3),
+        (winner_id, [T20, T19, D12]),
+    ]:
+        response = client.post(
+            f"/api/v1/matches/{match['id']}/visits",
+            json={"player_id": player, "darts": darts},
+            headers=setup["headers"],
+        )
+        assert response.status_code == 201, response.text
+    return match["id"]
+
+
+def test_head_to_head_counts_both_directions(client, setup):
+    own, guest = setup["own"]["id"], setup["guest"]["id"]
+    play_match(client, setup, winner_id=own)
+    play_match(client, setup, winner_id=own)
+    play_match(client, setup, winner_id=guest)
+
+    body = client.get(
+        f"/api/v1/players/{own}/head-to-head/{guest}", headers=setup["headers"]
+    ).json()
+    assert body["matches_played"] == 3
+    assert body["player"]["matches_won"] == 2
+    assert body["opponent"]["matches_won"] == 1
+    assert body["player"]["legs_won"] == 2
+    assert body["opponent"]["legs_won"] == 1
+    assert body["last_played_at"] is not None
+
+    # Same data viewed from the guest's side is mirrored
+    mirrored = client.get(
+        f"/api/v1/players/{guest}/head-to-head/{own}", headers=setup["headers"]
+    ).json()
+    assert mirrored["player"]["matches_won"] == 1
+    assert mirrored["opponent"]["matches_won"] == 2
+
+
+def test_head_to_head_ignores_matches_in_progress(client, setup):
+    own, guest = setup["own"]["id"], setup["guest"]["id"]
+    client.post(
+        "/api/v1/matches",
+        json={"opponent_player_id": guest, "best_of_legs": 3},
+        headers=setup["headers"],
+    )
+    body = client.get(
+        f"/api/v1/players/{own}/head-to-head/{guest}", headers=setup["headers"]
+    ).json()
+    assert body["matches_played"] == 0
+    assert body["last_played_at"] is None
+
+
+def test_head_to_head_with_self_is_400(client, setup):
+    own = setup["own"]["id"]
+    response = client.get(
+        f"/api/v1/players/{own}/head-to-head/{own}", headers=setup["headers"]
+    )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INVALID_REQUEST"
+
+
+def test_head_to_head_unknown_player_is_404(client, setup):
+    response = client.get(
+        f"/api/v1/players/{setup['own']['id']}/head-to-head/{uuid.uuid4()}",
+        headers=setup["headers"],
+    )
+    assert response.status_code == 404
+
+
 def test_stats_for_unknown_player_is_404(client, setup):
     response = client.get(
         f"/api/v1/players/{uuid.uuid4()}/stats", headers=setup["headers"]
