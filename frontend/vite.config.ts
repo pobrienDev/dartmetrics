@@ -17,5 +17,7 @@ export default defineConfig({
     setupFiles: './src/test/setup.ts',
     // Globals let React Testing Library auto-clean the DOM between tests
     globals: true,
+    // e2e/ belongs to Playwright, not Vitest
+    include: ['src/**/*.test.{ts,tsx}'],
   },
 })

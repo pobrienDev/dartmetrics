@@ -13,6 +13,10 @@ venv/
 .mypy_cache/
 .ruff_cache/
 
+# Playwright artifacts
+frontend/test-results/
+frontend/playwright-report/
+
 # Editors / OS
 .vscode/
 .idea/
