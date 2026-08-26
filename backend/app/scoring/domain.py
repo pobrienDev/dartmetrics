@@ -35,14 +35,26 @@ class Multiplier(Enum):
 class DartInput:
     """One thrown dart, validated against the physical board.
 
-    segment is None only for a miss. Raises ValueError for any
-    combination that does not exist on a real dartboard.
+    segment is None only for a miss. band records which single band a
+    single hit landed in ('inner' between triple ring and bull,
+    'outer' between double and triple rings) — only game modes that
+    care (Halve It) set it. Raises ValueError for any combination that
+    does not exist on a real dartboard.
     """
 
     segment: int | None
     multiplier: Multiplier
+    band: str | None = None
 
     def __post_init__(self) -> None:
+        if self.band is not None:
+            if self.band not in ("inner", "outer"):
+                raise ValueError("band must be 'inner' or 'outer'.")
+            if self.multiplier is not Multiplier.SINGLE or self.segment == BULL_SEGMENT:
+                raise ValueError(
+                    "band applies only to single hits on numbered segments."
+                )
+
         if self.multiplier is Multiplier.MISS:
             if self.segment is not None:
                 raise ValueError("A miss cannot have a segment.")
