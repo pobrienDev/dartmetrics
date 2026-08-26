@@ -4,9 +4,14 @@ Run locally with:
     uvicorn app.main:app --reload
 """
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.db import get_db
 
 
 def create_app() -> FastAPI:
@@ -19,8 +24,19 @@ def create_app() -> FastAPI:
 
     @app.get("/api/v1/health", tags=["system"])
     def health() -> dict[str, str]:
-        """Liveness check used by deployment platforms and monitoring."""
+        """Liveness check: the process is up and serving HTTP."""
         return {"status": "ok"}
+
+    @app.get("/api/v1/ready", tags=["system"])
+    def ready(db: Session = Depends(get_db)) -> JSONResponse:
+        """Readiness check: the app can reach PostgreSQL."""
+        try:
+            db.execute(text("SELECT 1"))
+        except SQLAlchemyError:
+            return JSONResponse(
+                status_code=503, content={"status": "unavailable", "database": "down"}
+            )
+        return JSONResponse(status_code=200, content={"status": "ready"})
 
     return app
 
