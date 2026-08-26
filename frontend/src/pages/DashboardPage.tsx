@@ -84,12 +84,17 @@ export function DashboardPage() {
           <h2 className="text-lg font-semibold text-gray-900">
             Welcome back, {user?.display_name}
           </h2>
-          <Link
-            to="/matches/new"
-            className="rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-700"
-          >
-            + New Match
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link to="/matches" className="text-sm font-medium text-emerald-600 hover:underline">
+              Match history
+            </Link>
+            <Link
+              to="/matches/new"
+              className="rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-700"
+            >
+              + New Match
+            </Link>
+          </div>
         </div>
 
         {ongoing.data && ongoing.data.items.length > 0 && (
