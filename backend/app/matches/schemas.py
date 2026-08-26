@@ -7,6 +7,7 @@ scores locally.
 """
 
 import uuid
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -53,6 +54,30 @@ class MatchStateResponse(BaseModel):
     winner_player_id: uuid.UUID | None
     players: list[PlayerStateResponse]
     current_leg: LegStateResponse | None
+
+
+class MatchPlayerSummary(BaseModel):
+    player_id: uuid.UUID
+    display_name: str
+    legs_won: int
+
+
+class MatchSummary(BaseModel):
+    id: uuid.UUID
+    status: MatchStatus
+    best_of_legs: int
+    winner_player_id: uuid.UUID | None
+    created_at: datetime
+    started_at: datetime | None
+    completed_at: datetime | None
+    players: list[MatchPlayerSummary]
+
+
+class MatchListResponse(BaseModel):
+    items: list[MatchSummary]
+    total: int
+    limit: int
+    offset: int
 
 
 class DartRequest(BaseModel):

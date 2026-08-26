@@ -287,6 +287,97 @@ def test_four_darts_is_422(client, setup):
     visit(client, setup, match["id"], setup["own"]["id"], [S20] * 4, expect=422)
 
 
+# --- Listing ---------------------------------------------------------------
+
+
+def finish_match(client, setup, match_id):
+    """Play a quick best-of-1 win for the creator's player."""
+    own, guest = setup["own"]["id"], setup["guest"]["id"]
+    visit(client, setup, match_id, own, [T20] * 3)
+    visit(client, setup, match_id, guest, [S20] * 3)
+    visit(client, setup, match_id, own, [T20] * 3)
+    visit(client, setup, match_id, guest, [S20] * 3)
+    visit(client, setup, match_id, own, [T20, T19, D12])
+
+
+def test_list_shows_own_matches_newest_first(client, setup):
+    first = make_match(client, setup)
+    second = make_match(client, setup)
+
+    response = client.get("/api/v1/matches", headers=setup["headers"])
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 2
+    assert [m["id"] for m in body["items"]] == [second["id"], first["id"]]
+    names = {p["display_name"] for p in body["items"][0]["players"]}
+    assert names == {"Patrick", "Guest Gary"}
+
+
+def test_status_filter_finds_resumable_matches(client, setup):
+    completed = make_match(client, setup, best_of=1)
+    finish_match(client, setup, completed["id"])
+    ongoing = make_match(client, setup, best_of=3)
+
+    in_progress = client.get(
+        "/api/v1/matches?status=in_progress", headers=setup["headers"]
+    ).json()
+    assert [m["id"] for m in in_progress["items"]] == [ongoing["id"]]
+
+    done = client.get(
+        "/api/v1/matches?status=completed", headers=setup["headers"]
+    ).json()
+    assert [m["id"] for m in done["items"]] == [completed["id"]]
+    assert done["items"][0]["winner_player_id"] == setup["own"]["id"]
+    legs = {p["player_id"]: p["legs_won"] for p in done["items"][0]["players"]}
+    assert legs[setup["own"]["id"]] == 1
+
+
+def test_pagination(client, setup):
+    ids = [make_match(client, setup)["id"] for _ in range(3)]
+
+    page = client.get(
+        "/api/v1/matches?limit=2&offset=0", headers=setup["headers"]
+    ).json()
+    assert page["total"] == 3
+    assert len(page["items"]) == 2
+    rest = client.get(
+        "/api/v1/matches?limit=2&offset=2", headers=setup["headers"]
+    ).json()
+    assert len(rest["items"]) == 1
+    assert rest["items"][0]["id"] == ids[0]  # oldest lands on last page
+
+
+def test_list_excludes_other_users_matches(client, setup):
+    make_match(client, setup)
+
+    other_headers = signup(client, "other@example.com", "Other")
+    client.post(
+        "/api/v1/players", json={"display_name": "Other"}, headers=other_headers
+    )
+    body = client.get("/api/v1/matches", headers=other_headers).json()
+    assert body["total"] == 0
+
+
+def test_participant_sees_match_created_by_someone_else(client, setup):
+    # Second registered user; Patrick creates a match against THEIR player.
+    other_headers = signup(client, "rival@example.com", "Rival")
+    rival_player = client.post(
+        "/api/v1/players", json={"display_name": "Rival"}, headers=other_headers
+    ).json()
+    match = client.post(
+        "/api/v1/matches",
+        json={"opponent_player_id": rival_player["id"], "best_of_legs": 3},
+        headers=setup["headers"],
+    ).json()
+
+    rivals_list = client.get("/api/v1/matches", headers=other_headers).json()
+    assert [m["id"] for m in rivals_list["items"]] == [match["id"]]
+
+
+def test_list_requires_authentication(client):
+    assert client.get("/api/v1/matches").status_code == 401
+
+
 # --- Undo ------------------------------------------------------------------
 
 

@@ -17,7 +17,7 @@ UI can capture the player's actual target.
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth.models import User
@@ -84,6 +84,10 @@ def create_match(
         best_of_legs=best_of_legs,
         status=MatchStatus.IN_PROGRESS,
         started_at=now,
+        # Stamped app-side: PostgreSQL's now() is the TRANSACTION start
+        # time, so rows created in one transaction would tie and make
+        # newest-first ordering arbitrary.
+        created_at=now,
     )
     session.add(match)
     session.flush()
@@ -123,6 +127,65 @@ def get_match(session: Session, match_id: uuid.UUID) -> Match:
     if match is None:
         raise MatchNotFound(f"Match {match_id} does not exist.")
     return match
+
+
+def list_matches(
+    session: Session,
+    user: User,
+    status: MatchStatus | None,
+    limit: int,
+    offset: int,
+) -> tuple[list[dict], int]:
+    """The user's matches (created or playing in), newest first."""
+    own_player_ids = select(Player.id).where(Player.user_id == user.id)
+    visibility = (
+        (Match.created_by_user_id == user.id)
+        | Match.player1_id.in_(own_player_ids)
+        | Match.player2_id.in_(own_player_ids)
+    )
+
+    conditions = [visibility]
+    if status is not None:
+        conditions.append(Match.status == status)
+
+    total = session.scalar(select(func.count(Match.id)).where(*conditions))
+    matches = list(
+        session.scalars(
+            select(Match)
+            .where(*conditions)
+            .order_by(Match.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+    )
+
+    items = []
+    for match in matches:
+        players = []
+        for player_id in (match.player1_id, match.player2_id):
+            player = session.get(Player, player_id)
+            players.append(
+                {
+                    "player_id": player_id,
+                    "display_name": player.display_name,
+                    "legs_won": sum(
+                        1 for leg in match.legs if leg.winner_player_id == player_id
+                    ),
+                }
+            )
+        items.append(
+            {
+                "id": match.id,
+                "status": match.status,
+                "best_of_legs": match.best_of_legs,
+                "winner_player_id": match.winner_player_id,
+                "created_at": match.created_at,
+                "started_at": match.started_at,
+                "completed_at": match.completed_at,
+                "players": players,
+            }
+        )
+    return items, total
 
 
 def _ensure_can_score(session: Session, user: User, match: Match) -> None:

@@ -2,15 +2,17 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user
 from app.auth.models import User
 from app.db import get_db
 from app.matches import service
+from app.matches.models import MatchStatus
 from app.matches.schemas import (
     MatchCreateRequest,
+    MatchListResponse,
     MatchStateResponse,
     VisitRequest,
     VisitResponse,
@@ -36,6 +38,24 @@ def create_match(
     state = service.build_match_state(db, match)
     db.commit()
     return state
+
+
+@router.get("", response_model=MatchListResponse)
+def list_matches(
+    match_status: MatchStatus | None = Query(default=None, alias="status"),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> MatchListResponse:
+    """Your matches (created or playing in), newest first.
+
+    Filter with ?status=in_progress to find matches to resume.
+    """
+    items, total = service.list_matches(
+        db, user=current_user, status=match_status, limit=limit, offset=offset
+    )
+    return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
 @router.get("/{match_id}", response_model=MatchStateResponse)
