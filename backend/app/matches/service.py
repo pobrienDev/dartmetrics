@@ -20,11 +20,16 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth.models import User
 from app.common.errors import (
+    InvalidMatchSetup,
     InvalidTurn,
     LegNotActive,
     MatchNotActive,
+    MatchNotFound,
+    MissingPlayerProfile,
     NotPlayersTurn,
+    PlayerNotFound,
     PlayerNotInMatch,
 )
 from app.matches.models import (
@@ -36,10 +41,141 @@ from app.matches.models import (
     MatchStatus,
     Turn,
 )
+from app.players.models import Player
 from app.scoring.domain import DartInput
 from app.scoring.engine import apply_dart
 
 MAX_DARTS_PER_TURN = 3
+STARTING_SCORE = 501
+
+
+def create_match(
+    session: Session,
+    user: User,
+    opponent_player_id: uuid.UUID,
+    best_of_legs: int,
+    starting_player_id: uuid.UUID | None,
+) -> Match:
+    """Create a match between the user's player and an opponent, and
+    immediately start leg 1 at 501-501 (dev plan core workflow step 5)."""
+    own_player = session.scalar(select(Player).where(Player.user_id == user.id))
+    if own_player is None:
+        raise MissingPlayerProfile(
+            "Create your player profile before starting a match."
+        )
+
+    opponent = session.get(Player, opponent_player_id)
+    if opponent is None:
+        raise PlayerNotFound(f"Player {opponent_player_id} does not exist.")
+    if opponent.id == own_player.id:
+        raise InvalidMatchSetup("You cannot play a match against yourself.")
+
+    starter_id = starting_player_id or own_player.id
+    if starter_id not in (own_player.id, opponent.id):
+        raise InvalidMatchSetup("starting_player_id must be one of the participants.")
+
+    now = datetime.now(timezone.utc)
+    match = Match(
+        created_by_user_id=user.id,
+        player1_id=own_player.id,
+        player2_id=opponent.id,
+        best_of_legs=best_of_legs,
+        status=MatchStatus.IN_PROGRESS,
+        started_at=now,
+    )
+    session.add(match)
+    session.flush()
+
+    _start_leg(session, match, leg_number=1, starting_player_id=starter_id, now=now)
+    session.flush()
+    return match
+
+
+def _start_leg(
+    session: Session,
+    match: Match,
+    leg_number: int,
+    starting_player_id: uuid.UUID,
+    now: datetime,
+) -> Leg:
+    leg = Leg(
+        match_id=match.id,
+        leg_number=leg_number,
+        starting_player_id=starting_player_id,
+        status=LegStatus.IN_PROGRESS,
+        started_at=now,
+    )
+    session.add(leg)
+    session.flush()
+    session.add_all(
+        [
+            LegPlayerState(leg_id=leg.id, player_id=match.player1_id),
+            LegPlayerState(leg_id=leg.id, player_id=match.player2_id),
+        ]
+    )
+    return leg
+
+
+def get_match(session: Session, match_id: uuid.UUID) -> Match:
+    match = session.get(Match, match_id)
+    if match is None:
+        raise MatchNotFound(f"Match {match_id} does not exist.")
+    return match
+
+
+def build_match_state(session: Session, match: Match) -> dict:
+    """Assemble the authoritative scoreboard for MatchStateResponse."""
+    current_leg = next(
+        (leg for leg in match.legs if leg.status is LegStatus.IN_PROGRESS), None
+    )
+
+    states: dict[uuid.UUID, LegPlayerState] = {}
+    active_player_id = None
+    if current_leg is not None:
+        states = {
+            s.player_id: s
+            for s in session.scalars(
+                select(LegPlayerState).where(LegPlayerState.leg_id == current_leg.id)
+            )
+        }
+        total_turns = sum(s.turns_taken for s in states.values())
+        active_player_id = _expected_player_id(current_leg, total_turns)
+
+    players = []
+    for player_id in (match.player1_id, match.player2_id):
+        player = session.get(Player, player_id)
+        state = states.get(player_id)
+        players.append(
+            {
+                "player_id": player_id,
+                "display_name": player.display_name,
+                "legs_won": sum(
+                    1 for leg in match.legs if leg.winner_player_id == player_id
+                ),
+                "remaining_score": state.remaining_score if state else None,
+                "is_active_turn": player_id == active_player_id,
+            }
+        )
+
+    return {
+        "id": match.id,
+        "status": match.status,
+        "best_of_legs": match.best_of_legs,
+        "legs_required_to_win": match.legs_required_to_win,
+        "winner_player_id": match.winner_player_id,
+        "players": players,
+        "current_leg": (
+            {
+                "id": current_leg.id,
+                "leg_number": current_leg.leg_number,
+                "status": current_leg.status,
+                "starting_player_id": current_leg.starting_player_id,
+                "winner_player_id": current_leg.winner_player_id,
+            }
+            if current_leg
+            else None
+        ),
+    }
 
 
 def _is_double_finishable(score: int) -> bool:
