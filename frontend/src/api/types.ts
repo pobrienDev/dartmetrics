@@ -38,6 +38,9 @@ export interface PlayerState {
   legs_won: number
   remaining_score: number | null // x01 only
   marks: Record<string, number> | null // cricket only: target -> 0..3
+  score: number | null // halve_it only
+  round: number | null // halve_it only (1-based)
+  round_target: string | null // halve_it only, e.g. "outer_black"
   is_active_turn: boolean
 }
 
@@ -65,6 +68,7 @@ export type DartMultiplier = 'miss' | 'single' | 'double' | 'triple'
 export interface DartRequest {
   segment: number | null
   multiplier: DartMultiplier
+  band?: 'inner' | 'outer' | null // halve_it band rounds, singles only
 }
 
 export interface TurnSummary {

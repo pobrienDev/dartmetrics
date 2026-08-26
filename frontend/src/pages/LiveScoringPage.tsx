@@ -7,7 +7,7 @@
 // response is the truth the screen re-renders from.
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { api, ApiError } from '../api/client'
@@ -26,11 +26,28 @@ interface RecentVisit {
   labels: string
 }
 
+const ROUND_LABELS: Record<string, string> = {
+  outer_black: 'Outer Black',
+  outer_white: 'Outer White',
+  inner_black: 'Inner Black',
+  inner_white: 'Inner White',
+  doubles: 'Any Double',
+  triples: 'Any Triple',
+  sixty_three: 'Exactly 63',
+  green_bull: 'Green Bull (25)',
+  red_bull: 'Red Bull (50)',
+}
+
+function defaultBand(roundTarget: string | null | undefined): 'inner' | 'outer' {
+  return roundTarget?.startsWith('inner') ? 'inner' : 'outer'
+}
+
 export function LiveScoringPage() {
   const { matchId } = useParams<{ matchId: string }>()
   const queryClient = useQueryClient()
 
   const [multiplier, setMultiplier] = useState<Exclude<DartMultiplier, 'miss'>>('single')
+  const [band, setBand] = useState<'inner' | 'outer'>('outer')
   const [darts, setDarts] = useState<DartRequest[]>([])
   const [banner, setBanner] = useState<string | null>(null)
   const [recentTurns, setRecentTurns] = useState<RecentVisit[]>([])
@@ -42,6 +59,13 @@ export function LiveScoringPage() {
   const state = matchQuery.data
   const activePlayer = state?.players.find((p) => p.is_active_turn)
   const isCricket = state?.game_type === 'cricket'
+  const isHalveIt = state?.game_type === 'halve_it'
+  const activeTarget = isHalveIt ? activePlayer?.round_target : null
+
+  // Band rounds pre-select their own band; the player can override.
+  useEffect(() => {
+    setBand(defaultBand(activeTarget))
+  }, [activeTarget])
 
   const submitVisit = useMutation({
     mutationFn: (visitDarts: DartRequest[]) =>
@@ -50,17 +74,45 @@ export function LiveScoringPage() {
         body: { player_id: activePlayer?.player_id, darts: visitDarts },
       }),
     onSuccess: (response, visitDarts) => {
+      // For Halve It, compare against the cached state to spot a halving
+      const before = queryClient.getQueryData<MatchState>(['match', matchId])
+      const oldScore = before?.players.find(
+        (p) => p.player_id === response.turn.player_id,
+      )?.score
       queryClient.setQueryData(['match', matchId], response.state)
       const labels = visitDarts.map(dartLabel).join(' ')
       setRecentTurns((prev) => [{ turn: response.turn, labels }, ...prev].slice(0, 5))
       setDarts([])
       setMultiplier('single')
+      if (response.state.game_type === 'halve_it' && !response.turn.is_checkout) {
+        const newScore = response.state.players.find(
+          (p) => p.player_id === response.turn.player_id,
+        )?.score
+        if (oldScore != null && newScore != null) {
+          setBanner(
+            newScore < oldScore
+              ? `Halved! ${oldScore} → ${newScore}`
+              : newScore > oldScore
+                ? `+${newScore - oldScore}`
+                : null,
+          )
+        }
+        return
+      }
       if (response.turn.is_checkout) {
-        const wonLeg = response.state.game_type === 'cricket' ? 'Board closed — leg won!' : 'Leg won!'
+        const game = response.state.game_type
+        const wonLeg =
+          game === 'cricket'
+            ? 'Board closed — leg won!'
+            : game === 'halve_it'
+              ? 'Game decided on points!'
+              : 'Leg won!'
         const wonMatch =
-          response.state.game_type === 'cricket'
+          game === 'cricket'
             ? 'Board closed — match won!'
-            : 'Game shot — match won!'
+            : game === 'halve_it'
+              ? 'Match decided on points!'
+              : 'Game shot — match won!'
         setBanner(response.state.status === 'completed' ? wonMatch : wonLeg)
       } else if (response.turn.is_bust) {
         setBanner(`Bust! Score stays at ${response.turn.turn_start_score}.`)
@@ -87,8 +139,16 @@ export function LiveScoringPage() {
       setBanner(err instanceof ApiError ? err.message : 'Something went wrong.'),
   })
 
-  function addDart(dart: DartRequest) {
+  function addDart(rawDart: DartRequest) {
     if (!activePlayer || submitVisit.isPending) return
+    // In Halve It, numbered singles carry the selected band.
+    const dart: DartRequest =
+      isHalveIt &&
+      rawDart.multiplier === 'single' &&
+      rawDart.segment !== null &&
+      rawDart.segment !== 25
+        ? { ...rawDart, band }
+        : rawDart
     const next = [...darts, dart]
 
     // The server is the judge; we just stop collecting darts.
@@ -96,6 +156,8 @@ export function LiveScoringPage() {
     if (isCricket) {
       mustEnd =
         next.length === 3 || boardClosed(marksAfterDarts(activePlayer.marks ?? {}, next))
+    } else if (isHalveIt) {
+      mustEnd = next.length === 3 // rounds never end early
     } else {
       const remaining =
         (activePlayer.remaining_score ?? 0) -
@@ -151,7 +213,19 @@ export function LiveScoringPage() {
               {player.display_name}
               {player.is_active_turn && !finished && ' 🎯'}
             </p>
-            {isCricket ? (
+            {isHalveIt ? (
+              <>
+                <p className="my-2 text-6xl font-bold tabular-nums">
+                  {player.score ?? '—'}
+                </p>
+                <p className="text-sm text-emerald-300">
+                  Round {player.round ?? '—'}
+                  {player.round_target
+                    ? ` · ${ROUND_LABELS[player.round_target] ?? player.round_target}`
+                    : ''}
+                </p>
+              </>
+            ) : isCricket ? (
               <div className="my-2 grid grid-cols-7 gap-1">
                 {CRICKET_TARGETS.map((target) => {
                   const count = player.marks?.[String(target)] ?? 0
@@ -255,6 +329,25 @@ export function LiveScoringPage() {
               Miss
             </button>
           </div>
+
+          {/* Halve It: which single band a numbered single landed in */}
+          {isHalveIt && multiplier === 'single' && (
+            <div className="mb-3 grid grid-cols-2 gap-2">
+              {(['outer', 'inner'] as const).map((b) => (
+                <button
+                  key={b}
+                  onClick={() => setBand(b)}
+                  className={`rounded-lg py-2.5 text-xs font-semibold uppercase ${
+                    band === b
+                      ? 'bg-sky-700'
+                      : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                  }`}
+                >
+                  {b} single band
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Number pad: 5 columns on phones keeps every key at a
               comfortable thumb size; 7 columns from tablet up. */}

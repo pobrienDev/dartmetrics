@@ -12,6 +12,7 @@ import { useAuth } from '../auth/AuthContext'
 const GAME_CHOICES: { value: GameType; label: string; hint: string }[] = [
   { value: 'x01', label: '501', hint: 'double-out' },
   { value: 'cricket', label: 'Cricket', hint: 'race to close' },
+  { value: 'halve_it', label: 'Halve It', hint: 'house rules' },
 ]
 
 export function NewMatchPage() {

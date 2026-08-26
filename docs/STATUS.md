@@ -67,22 +67,23 @@ visit-level). The README summarises the implemented 501 rules.
 - Verify claims by running them (tests, live servers, real browser)
   before committing; document deviations and tradeoffs in the README.
 
-## Game modes (in progress)
+## Game modes (complete)
 
-Rules for Cricket (race to close) and Halve It (house rules) are
-specified in docs/GAME_MODES.md — that file is authoritative.
-Completed: schema (game_type/game_config/game_state/single_band
-migration `1f4e6601cae7`), Cricket engine + API + UI (marks grid,
-game picker, cricket-aware undo via raw-dart replay), 501 statistics
-scoped to x01 matches. Remaining: Halve It engine + API + UI
-(different turn structure: both players play every numbered round,
-no early end, halving on miss, exact-63 round, band-aware singles
-input using dart_throws.single_band).
+Three playable game modes: 501, Cricket (race to close), and Halve It
+(house rules). Rules are specified in docs/GAME_MODES.md — that file
+is authoritative. Implementation: schema migration `1f4e6601cae7`
+(game_type/game_config/game_state/single_band); per-game pure engines
+in app/scoring/; the turn service dispatches by game type behind
+shared validation; undo replays raw darts for Cricket and Halve It;
+Halve It leg completion credits the higher score (winner can differ
+from the final thrower) and ties extend into Red Bull rounds; 501
+statistics are scoped to x01 matches. UI: game picker, Cricket marks
+grid, Halve It round/score display with inner-outer band toggle.
+Backend 182 tests, frontend 30 + 2 e2e.
 
 ## Next up
 
-1. Halve It implementation (see above).
-2. Security checklist review + production config (CORS allowlist,
+1. Security checklist review + production config (CORS allowlist,
    secure cookie/token settings, rate limiting decision) — pairs with:
 3. Phase 9 deployment: backend Dockerfile, managed PostgreSQL,
    public frontend + backend hosting, migrations in the deploy flow.
