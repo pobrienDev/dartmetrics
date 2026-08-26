@@ -10,6 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.auth.router import me_router
 from app.auth.router import router as auth_router
 from app.common.errors import DomainError
 from app.config import get_settings
@@ -25,14 +26,17 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(auth_router)
+    app.include_router(me_router)
 
     @app.exception_handler(DomainError)
     def handle_domain_error(request: Request, exc: DomainError) -> JSONResponse:
         """Every domain rule violation becomes the plan's error envelope:
         {"error": {"code": ..., "message": ...}} with a suitable status."""
+        headers = {"WWW-Authenticate": "Bearer"} if exc.http_status == 401 else None
         return JSONResponse(
             status_code=exc.http_status,
             content={"error": {"code": exc.code, "message": str(exc)}},
+            headers=headers,
         )
 
     @app.get("/api/v1/health", tags=["system"])

@@ -115,6 +115,59 @@ def test_bad_credentials_get_identical_401(client, email, password):
     assert response.json()["error"]["message"] == "Incorrect email or password."
 
 
+def register_and_login(client) -> tuple[dict, dict]:
+    """Helper: returns (created user body, auth headers)."""
+    created = client.post("/api/v1/auth/register", json=VALID_BODY).json()
+    token = client.post(
+        "/api/v1/auth/login",
+        json={"email": VALID_BODY["email"], "password": VALID_BODY["password"]},
+    ).json()["access_token"]
+    return created, {"Authorization": f"Bearer {token}"}
+
+
+def test_me_returns_authenticated_user(client):
+    created, headers = register_and_login(client)
+    response = client.get("/api/v1/me", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["id"] == created["id"]
+    assert response.json()["email"] == "pat@example.com"
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {},                                            # no header at all
+        {"Authorization": "Bearer not.a.token"},       # garbage token
+        {"Authorization": "Basic cGF0OnB3"},           # wrong scheme
+    ],
+)
+def test_me_rejects_unauthenticated_requests(client, headers):
+    response = client.get("/api/v1/me", headers=headers)
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "NOT_AUTHENTICATED"
+    assert response.headers.get("WWW-Authenticate") == "Bearer"
+
+
+def test_me_rejects_token_for_nonexistent_user(client):
+    import uuid
+
+    from app.common.security import create_access_token
+
+    ghost_headers = {"Authorization": f"Bearer {create_access_token(uuid.uuid4())}"}
+    response = client.get("/api/v1/me", headers=ghost_headers)
+    assert response.status_code == 401
+
+
+def test_me_rejects_deactivated_user_with_valid_token(client, db_session):
+    created, headers = register_and_login(client)
+    user = db_session.scalar(select(User).where(User.email == "pat@example.com"))
+    user.is_active = False
+    db_session.flush()
+
+    response = client.get("/api/v1/me", headers=headers)
+    assert response.status_code == 401
+
+
 def test_deactivated_account_cannot_login(client, db_session):
     client.post("/api/v1/auth/register", json=VALID_BODY)
     user = db_session.scalar(select(User).where(User.email == "pat@example.com"))

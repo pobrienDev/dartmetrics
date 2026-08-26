@@ -42,3 +42,8 @@ class EmailAlreadyRegistered(DomainError):
 class InvalidCredentials(DomainError):
     code = "INVALID_CREDENTIALS"
     http_status = 401
+
+
+class NotAuthenticated(DomainError):
+    code = "NOT_AUTHENTICATED"
+    http_status = 401
