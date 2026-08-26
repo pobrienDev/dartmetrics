@@ -25,6 +25,7 @@ from app.common.errors import (
     InvalidMatchSetup,
     InvalidTurn,
     LegNotActive,
+    MatchAccessDenied,
     MatchNotActive,
     MatchNotFound,
     MissingPlayerProfile,
@@ -121,6 +122,65 @@ def get_match(session: Session, match_id: uuid.UUID) -> Match:
     if match is None:
         raise MatchNotFound(f"Match {match_id} does not exist.")
     return match
+
+
+def _ensure_can_score(session: Session, user: User, match: Match) -> None:
+    """Only the match creator or a participant may record visits
+    (dev plan authorization matrix). Guests are scored by the creator."""
+    if user.id == match.created_by_user_id:
+        return
+    own_player = session.scalar(
+        select(Player).where(
+            Player.user_id == user.id,
+            Player.id.in_([match.player1_id, match.player2_id]),
+        )
+    )
+    if own_player is None:
+        raise MatchAccessDenied("You are not a participant in this match.")
+
+
+def record_match_visit(
+    session: Session,
+    user: User,
+    match_id: uuid.UUID,
+    player_id: uuid.UUID,
+    darts: list[DartInput],
+) -> tuple[Turn, Match]:
+    """Record one visit against the match's active leg and, when the
+    visit wins a leg mid-match, start the next leg with the alternated
+    starter (Phase 0 spec 17.1)."""
+    match = get_match(session, match_id)
+    _ensure_can_score(session, user, match)
+
+    if match.status is not MatchStatus.IN_PROGRESS:
+        raise MatchNotActive(f"Match is {match.status}; scoring is not allowed.")
+
+    leg = next(
+        (leg for leg in match.legs if leg.status is LegStatus.IN_PROGRESS), None
+    )
+    if leg is None:
+        raise LegNotActive("The match has no active leg.")
+
+    turn = record_turn(session, leg.id, player_id, darts)
+
+    if leg.status is LegStatus.COMPLETED and match.status is MatchStatus.IN_PROGRESS:
+        other_starter = (
+            match.player2_id
+            if leg.starting_player_id == match.player1_id
+            else match.player1_id
+        )
+        _start_leg(
+            session,
+            match,
+            leg_number=leg.leg_number + 1,
+            starting_player_id=other_starter,
+            now=datetime.now(timezone.utc),
+        )
+        # The legs collection was loaded before the new leg existed
+        session.expire(match, ["legs"])
+
+    session.flush()
+    return turn, match
 
 
 def build_match_state(session: Session, match: Match) -> dict:

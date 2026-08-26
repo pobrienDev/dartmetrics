@@ -7,10 +7,12 @@ scores locally.
 """
 
 import uuid
+from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.matches.models import LegStatus, MatchStatus
+from app.scoring.domain import DartInput, Multiplier
 
 
 class MatchCreateRequest(BaseModel):
@@ -51,3 +53,45 @@ class MatchStateResponse(BaseModel):
     winner_player_id: uuid.UUID | None
     players: list[PlayerStateResponse]
     current_leg: LegStateResponse | None
+
+
+class DartRequest(BaseModel):
+    """One dart as JSON, e.g. {"segment": 20, "multiplier": "triple"}
+    or {"multiplier": "miss"}. Board legality is checked here, so an
+    impossible dart (triple 25, double 21) is a 422 validation error."""
+
+    segment: int | None = None
+    multiplier: Literal["miss", "single", "double", "triple"]
+
+    @model_validator(mode="after")
+    def must_be_a_real_dart(self) -> "DartRequest":
+        self.to_dart_input()  # raises ValueError -> 422 with the message
+        return self
+
+    def to_dart_input(self) -> DartInput:
+        return DartInput(
+            segment=self.segment, multiplier=Multiplier[self.multiplier.upper()]
+        )
+
+
+class VisitRequest(BaseModel):
+    player_id: uuid.UUID
+    darts: list[DartRequest] = Field(min_length=1, max_length=3)
+
+
+class TurnSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    player_id: uuid.UUID
+    turn_number: int
+    turn_start_score: int
+    turn_end_score: int
+    points_scored: int
+    is_bust: bool
+    is_checkout: bool
+
+
+class VisitResponse(BaseModel):
+    turn: TurnSummary
+    state: MatchStateResponse

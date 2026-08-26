@@ -160,3 +160,141 @@ def test_matches_require_authentication(client):
         ).status_code
         == 401
     )
+
+
+# --- Visit recording ------------------------------------------------------
+
+T20 = {"segment": 20, "multiplier": "triple"}
+T19 = {"segment": 19, "multiplier": "triple"}
+D12 = {"segment": 12, "multiplier": "double"}
+S20 = {"segment": 20, "multiplier": "single"}
+
+
+def make_match(client, setup, best_of=1) -> dict:
+    return client.post(
+        "/api/v1/matches",
+        json={"opponent_player_id": setup["guest"]["id"], "best_of_legs": best_of},
+        headers=setup["headers"],
+    ).json()
+
+
+def visit(client, setup, match_id, player_id, darts, expect=201):
+    response = client.post(
+        f"/api/v1/matches/{match_id}/visits",
+        json={"player_id": player_id, "darts": darts},
+        headers=setup["headers"],
+    )
+    assert response.status_code == expect, response.text
+    return response.json()
+
+
+def test_nine_dart_match_over_http(client, setup):
+    match = make_match(client, setup, best_of=1)
+    own, guest = setup["own"]["id"], setup["guest"]["id"]
+
+    body = visit(client, setup, match["id"], own, [T20] * 3)
+    assert body["turn"]["points_scored"] == 180
+    me_state = [p for p in body["state"]["players"] if p["player_id"] == own][0]
+    assert me_state["remaining_score"] == 321
+    assert not me_state["is_active_turn"]  # turn passed to the guest
+
+    visit(client, setup, match["id"], guest, [S20] * 3)
+    visit(client, setup, match["id"], own, [T20] * 3)          # 141 left
+    visit(client, setup, match["id"], guest, [S20] * 3)
+    final = visit(client, setup, match["id"], own, [T20, T19, D12])
+
+    assert final["turn"]["is_checkout"] is True
+    assert final["state"]["status"] == "completed"
+    assert final["state"]["winner_player_id"] == own
+    assert final["state"]["current_leg"] is None
+    winner = [p for p in final["state"]["players"] if p["player_id"] == own][0]
+    assert winner["legs_won"] == 1
+
+
+def test_bust_leaves_scoreboard_unchanged(client, setup):
+    match = make_match(client, setup)
+    own, guest = setup["own"]["id"], setup["guest"]["id"]
+
+    visit(client, setup, match["id"], own, [T20] * 3)   # 321
+    visit(client, setup, match["id"], guest, [S20] * 3)
+    visit(client, setup, match["id"], own, [T20] * 3)   # 141
+    visit(client, setup, match["id"], guest, [S20] * 3)
+    # 141 left: T20, T20 busts (below zero on dart 2 leaves 21... no:
+    # 141-60-60=21, fine; third dart T20 goes below zero)
+    body = visit(client, setup, match["id"], own, [T20, T20, {"segment": 7, "multiplier": "triple"}])
+
+    assert body["turn"]["is_bust"] is True
+    me_state = [p for p in body["state"]["players"] if p["player_id"] == own][0]
+    assert me_state["remaining_score"] == 141  # restored
+    assert not me_state["is_active_turn"]
+
+
+def test_winning_a_leg_starts_next_with_alternated_starter(client, setup):
+    match = make_match(client, setup, best_of=3)
+    own, guest = setup["own"]["id"], setup["guest"]["id"]
+    assert match["current_leg"]["starting_player_id"] == own
+
+    visit(client, setup, match["id"], own, [T20] * 3)
+    visit(client, setup, match["id"], guest, [S20] * 3)
+    visit(client, setup, match["id"], own, [T20] * 3)
+    visit(client, setup, match["id"], guest, [S20] * 3)
+    body = visit(client, setup, match["id"], own, [T20, T19, D12])
+
+    state = body["state"]
+    assert state["status"] == "in_progress"
+    assert state["current_leg"]["leg_number"] == 2
+    assert state["current_leg"]["starting_player_id"] == guest  # alternated
+    for player in state["players"]:
+        assert player["remaining_score"] == 501  # fresh leg
+    own_state = [p for p in state["players"] if p["player_id"] == own][0]
+    assert own_state["legs_won"] == 1
+    guest_state = [p for p in state["players"] if p["player_id"] == guest][0]
+    assert guest_state["is_active_turn"]
+
+
+def test_out_of_turn_visit_rejected(client, setup):
+    match = make_match(client, setup)
+    body = visit(client, setup, match["id"], setup["guest"]["id"], [T20] * 3, expect=409)
+    assert body["error"]["code"] == "NOT_PLAYER_TURN"
+
+
+def test_non_participant_cannot_score(client, setup):
+    match = make_match(client, setup)
+    outsider_headers = signup(client, "outsider@example.com", "Outsider")
+    response = client.post(
+        f"/api/v1/matches/{match['id']}/visits",
+        json={"player_id": setup["own"]["id"], "darts": [T20] * 3},
+        headers=outsider_headers,
+    )
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "MATCH_ACCESS_DENIED"
+
+
+def test_impossible_dart_is_422(client, setup):
+    match = make_match(client, setup)
+    visit(
+        client, setup, match["id"], setup["own"]["id"],
+        [{"segment": 25, "multiplier": "triple"}], expect=422,
+    )
+    visit(
+        client, setup, match["id"], setup["own"]["id"],
+        [{"segment": 21, "multiplier": "single"}], expect=422,
+    )
+
+
+def test_four_darts_is_422(client, setup):
+    match = make_match(client, setup)
+    visit(client, setup, match["id"], setup["own"]["id"], [S20] * 4, expect=422)
+
+
+def test_scoring_completed_match_is_409(client, setup):
+    match = make_match(client, setup, best_of=1)
+    own, guest = setup["own"]["id"], setup["guest"]["id"]
+    visit(client, setup, match["id"], own, [T20] * 3)
+    visit(client, setup, match["id"], guest, [S20] * 3)
+    visit(client, setup, match["id"], own, [T20] * 3)
+    visit(client, setup, match["id"], guest, [S20] * 3)
+    visit(client, setup, match["id"], own, [T20, T19, D12])  # match over
+
+    body = visit(client, setup, match["id"], guest, [S20] * 3, expect=409)
+    assert body["error"]["code"] == "MATCH_NOT_ACTIVE"

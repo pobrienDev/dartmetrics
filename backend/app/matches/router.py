@@ -9,7 +9,12 @@ from app.auth.deps import get_current_user
 from app.auth.models import User
 from app.db import get_db
 from app.matches import service
-from app.matches.schemas import MatchCreateRequest, MatchStateResponse
+from app.matches.schemas import (
+    MatchCreateRequest,
+    MatchStateResponse,
+    VisitRequest,
+    VisitResponse,
+)
 
 router = APIRouter(prefix="/api/v1/matches", tags=["matches"])
 
@@ -42,3 +47,23 @@ def get_match(
     """Current authoritative state of a match."""
     match = service.get_match(db, match_id)
     return service.build_match_state(db, match)
+
+
+@router.post("/{match_id}/visits", response_model=VisitResponse, status_code=status.HTTP_201_CREATED)
+def record_visit(
+    match_id: uuid.UUID,
+    body: VisitRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> VisitResponse:
+    """Record one visit (1-3 darts) for a player in the active leg."""
+    turn, match = service.record_match_visit(
+        db,
+        user=current_user,
+        match_id=match_id,
+        player_id=body.player_id,
+        darts=[dart.to_dart_input() for dart in body.darts],
+    )
+    state = service.build_match_state(db, match)
+    db.commit()
+    return {"turn": turn, "state": state}

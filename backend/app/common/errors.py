@@ -76,3 +76,8 @@ class MatchNotFound(DomainError):
 
 class InvalidMatchSetup(DomainError):
     code = "INVALID_MATCH_SETUP"
+
+
+class MatchAccessDenied(DomainError):
+    code = "MATCH_ACCESS_DENIED"
+    http_status = 403
