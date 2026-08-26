@@ -12,13 +12,14 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.matches.models import LegStatus, MatchStatus
+from app.matches.models import GameType, LegStatus, MatchStatus
 from app.scoring.domain import DartInput, Multiplier
 
 
 class MatchCreateRequest(BaseModel):
     opponent_player_id: uuid.UUID
     best_of_legs: int = Field(ge=1, le=21)
+    game_type: GameType = GameType.X01
     # Defaults to the creator's player when omitted.
     starting_player_id: uuid.UUID | None = None
 
@@ -34,7 +35,8 @@ class PlayerStateResponse(BaseModel):
     player_id: uuid.UUID
     display_name: str
     legs_won: int
-    remaining_score: int | None  # None when no leg is active
+    remaining_score: int | None  # x01 only; None otherwise
+    marks: dict[int, int] | None = None  # cricket only: target -> 0..3
     is_active_turn: bool
 
 
@@ -48,6 +50,7 @@ class LegStateResponse(BaseModel):
 
 class MatchStateResponse(BaseModel):
     id: uuid.UUID
+    game_type: GameType
     status: MatchStatus
     best_of_legs: int
     legs_required_to_win: int

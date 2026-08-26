@@ -34,8 +34,11 @@ from app.common.errors import (
     PlayerNotInMatch,
     UndoNotAvailable,
 )
+from dataclasses import dataclass, field
+
 from app.matches.models import (
     DartThrow,
+    GameType,
     Leg,
     LegPlayerState,
     LegStatus,
@@ -44,7 +47,8 @@ from app.matches.models import (
     Turn,
 )
 from app.players.models import Player
-from app.scoring.domain import DartInput
+from app.scoring.cricket import apply_cricket_dart, initial_marks
+from app.scoring.domain import DartInput, Multiplier
 from app.scoring.engine import apply_dart
 
 MAX_DARTS_PER_TURN = 3
@@ -57,6 +61,7 @@ def create_match(
     opponent_player_id: uuid.UUID,
     best_of_legs: int,
     starting_player_id: uuid.UUID | None,
+    game_type: GameType = GameType.X01,
 ) -> Match:
     """Create a match between the user's player and an opponent, and
     immediately start leg 1 at 501-501 (dev plan core workflow step 5)."""
@@ -82,6 +87,7 @@ def create_match(
         player1_id=own_player.id,
         player2_id=opponent.id,
         best_of_legs=best_of_legs,
+        game_type=game_type,
         status=MatchStatus.IN_PROGRESS,
         started_at=now,
         # Stamped app-side: PostgreSQL's now() is the TRANSACTION start
@@ -113,10 +119,19 @@ def _start_leg(
     )
     session.add(leg)
     session.flush()
+    game_state = (
+        {str(t): 0 for t in initial_marks()}
+        if match.game_type is GameType.CRICKET
+        else None
+    )
     session.add_all(
         [
-            LegPlayerState(leg_id=leg.id, player_id=match.player1_id),
-            LegPlayerState(leg_id=leg.id, player_id=match.player2_id),
+            LegPlayerState(
+                leg_id=leg.id, player_id=match.player1_id, game_state=game_state
+            ),
+            LegPlayerState(
+                leg_id=leg.id, player_id=match.player2_id, game_state=game_state
+            ),
         ]
     )
     return leg
@@ -298,16 +313,43 @@ def undo_latest_visit(session: Session, user: User, match_id: uuid.UUID) -> Matc
             LegPlayerState.player_id == latest.player_id,
         )
     )
-    state.remaining_score = latest.turn_start_score
     state.darts_thrown -= len(latest.dart_throws)
     state.turns_taken -= 1
 
     for dart in latest.dart_throws:
         session.delete(dart)
     session.delete(latest)
+    session.flush()
+
+    if match.game_type is GameType.CRICKET:
+        # Marks aren't reversible per turn; rebuild them by replaying the
+        # player's surviving darts — the raw events are the truth.
+        state.game_state = _replay_cricket_marks(session, leg.id, latest.player_id)
+    else:
+        state.remaining_score = latest.turn_start_score
 
     session.flush()
     return match
+
+
+def _replay_cricket_marks(
+    session: Session, leg_id: uuid.UUID, player_id: uuid.UUID
+) -> dict:
+    rows = session.execute(
+        select(DartThrow.segment, DartThrow.multiplier)
+        .join(Turn, DartThrow.turn_id == Turn.id)
+        .where(Turn.leg_id == leg_id, Turn.player_id == player_id)
+        .order_by(Turn.turn_number, DartThrow.dart_number)
+    ).all()
+
+    marks = initial_marks()
+    for segment, multiplier in rows:
+        dart = DartInput(
+            segment=None if segment == "MISS" else int(segment),
+            multiplier=Multiplier(multiplier),
+        )
+        marks = apply_cricket_dart(marks, dart).marks
+    return {str(t): c for t, c in marks.items()}
 
 
 def build_match_state(session: Session, match: Match) -> dict:
@@ -328,6 +370,7 @@ def build_match_state(session: Session, match: Match) -> dict:
         total_turns = sum(s.turns_taken for s in states.values())
         active_player_id = _expected_player_id(current_leg, total_turns)
 
+    is_cricket = match.game_type is GameType.CRICKET
     players = []
     for player_id in (match.player1_id, match.player2_id):
         player = session.get(Player, player_id)
@@ -339,13 +382,21 @@ def build_match_state(session: Session, match: Match) -> dict:
                 "legs_won": sum(
                     1 for leg in match.legs if leg.winner_player_id == player_id
                 ),
-                "remaining_score": state.remaining_score if state else None,
+                "remaining_score": (
+                    state.remaining_score if state and not is_cricket else None
+                ),
+                "marks": (
+                    marks_from_game_state(state.game_state)
+                    if state and is_cricket
+                    else None
+                ),
                 "is_active_turn": player_id == active_player_id,
             }
         )
 
     return {
         "id": match.id,
+        "game_type": match.game_type,
         "status": match.status,
         "best_of_legs": match.best_of_legs,
         "legs_required_to_win": match.legs_required_to_win,
@@ -367,6 +418,115 @@ def build_match_state(session: Session, match: Match) -> dict:
 
 def _is_double_finishable(score: int) -> bool:
     return score == 50 or (2 <= score <= 40 and score % 2 == 0)
+
+
+@dataclass
+class _VisitOutcome:
+    """Uniform result of applying a visit's darts under any game mode."""
+
+    turn_start: int
+    turn_end: int
+    points: int
+    is_bust: bool
+    leg_won: bool
+    dart_rows: list[dict] = field(default_factory=list)
+    new_remaining: int | None = None  # x01 only
+    new_game_state: dict | None = None  # cricket marks (string keys)
+
+
+def _play_x01_visit(turn_start: int, darts: list[DartInput]) -> _VisitOutcome:
+    remaining = turn_start
+    results = []
+    for index, dart in enumerate(darts):
+        result = apply_dart(turn_start, remaining, dart)
+        results.append(result)
+        if result.turn_should_end and index < len(darts) - 1:
+            raise InvalidTurn(
+                "The turn ended (bust or checkout) before all submitted darts; "
+                "no darts may follow the ending dart."
+            )
+        remaining = result.effective_remaining
+
+    final = results[-1]
+    if not final.turn_should_end and len(darts) < MAX_DARTS_PER_TURN:
+        raise InvalidTurn(
+            "A turn must contain three darts unless a bust or checkout ends it early."
+        )
+
+    dart_rows = []
+    score_before = turn_start
+    for dart, result in zip(darts, results):
+        dart_rows.append(
+            {
+                "segment": "MISS" if dart.segment is None else str(dart.segment),
+                "multiplier": dart.multiplier.value,
+                "score": result.dart_score,
+                "is_double": dart.is_double,
+                "is_checkout_attempt": _is_double_finishable(score_before),
+                "is_winning_dart": result.is_checkout,
+            }
+        )
+        score_before = result.tentative_remaining if not result.is_bust else score_before
+
+    return _VisitOutcome(
+        turn_start=turn_start,
+        turn_end=final.effective_remaining,
+        points=0 if final.is_bust else turn_start - final.effective_remaining,
+        is_bust=final.is_bust,
+        leg_won=final.is_checkout,
+        dart_rows=dart_rows,
+        new_remaining=final.effective_remaining,
+    )
+
+
+def marks_from_game_state(game_state: dict | None) -> dict[int, int]:
+    """JSON storage stringifies the mark keys; convert back to ints."""
+    if not game_state:
+        return initial_marks()
+    return {int(target): count for target, count in game_state.items()}
+
+
+def _play_cricket_visit(
+    state: LegPlayerState, darts: list[DartInput]
+) -> _VisitOutcome:
+    marks = marks_from_game_state(state.game_state)
+    dart_rows = []
+    won = False
+    for index, dart in enumerate(darts):
+        result = apply_cricket_dart(marks, dart)
+        marks = result.marks
+        won = result.leg_won
+        if won and index < len(darts) - 1:
+            raise InvalidTurn("No darts may follow the leg-winning dart.")
+        dart_rows.append(
+            {
+                "segment": "MISS" if dart.segment is None else str(dart.segment),
+                "multiplier": dart.multiplier.value,
+                "score": dart.score,
+                "is_double": dart.is_double,
+                "is_checkout_attempt": False,
+                # The 501 constraint requires winning darts to be doubles,
+                # so Cricket wins are recorded at the leg level instead.
+                "is_winning_dart": False,
+            }
+        )
+
+    if not won and len(darts) < MAX_DARTS_PER_TURN:
+        raise InvalidTurn(
+            "A Cricket turn must contain three darts unless it wins the leg."
+        )
+
+    return _VisitOutcome(
+        # Cricket has no running score; zeros satisfy the turn-table
+        # invariants (start == end, points == start - end).
+        turn_start=0,
+        turn_end=0,
+        points=0,
+        is_bust=False,
+        leg_won=won,
+        dart_rows=dart_rows,
+        new_game_state={str(t): c for t, c in marks.items()},
+    )
 
 
 def _expected_player_id(leg: Leg, total_turns_taken: int) -> uuid.UUID:
@@ -424,60 +584,36 @@ def record_turn(
     if player_id != expected:
         raise NotPlayersTurn(f"It is not player {player_id}'s turn.")
 
-    turn_start = state.remaining_score
-    remaining = turn_start
-    results = []
-    for index, dart in enumerate(darts):
-        result = apply_dart(turn_start, remaining, dart)
-        results.append(result)
-        if result.turn_should_end and index < len(darts) - 1:
-            raise InvalidTurn(
-                "The turn ended (bust or checkout) before all submitted darts; "
-                "no darts may follow the ending dart."
-            )
-        remaining = result.effective_remaining
-
-    final = results[-1]
-    if not final.turn_should_end and len(darts) < MAX_DARTS_PER_TURN:
-        raise InvalidTurn(
-            "A turn must contain three darts unless a bust or checkout ends it early."
-        )
+    if match.game_type is GameType.CRICKET:
+        outcome = _play_cricket_visit(state, darts)
+    else:
+        outcome = _play_x01_visit(state.remaining_score, darts)
 
     now = datetime.now(timezone.utc)
     turn = Turn(
         leg_id=leg.id,
         player_id=player_id,
         turn_number=total_turns + 1,
-        turn_start_score=turn_start,
-        turn_end_score=final.effective_remaining,
-        points_scored=0 if final.is_bust else turn_start - final.effective_remaining,
-        is_bust=final.is_bust,
-        is_checkout=final.is_checkout,
+        turn_start_score=outcome.turn_start,
+        turn_end_score=outcome.turn_end,
+        points_scored=outcome.points,
+        is_bust=outcome.is_bust,
+        is_checkout=outcome.leg_won,
     )
     session.add(turn)
     session.flush()  # assign turn.id before darts reference it
 
-    score_before = turn_start
-    for index, (dart, result) in enumerate(zip(darts, results), start=1):
-        session.add(
-            DartThrow(
-                turn_id=turn.id,
-                dart_number=index,
-                segment="MISS" if dart.segment is None else str(dart.segment),
-                multiplier=dart.multiplier.value,
-                score=result.dart_score,
-                is_double=dart.is_double,
-                is_checkout_attempt=_is_double_finishable(score_before),
-                is_winning_dart=result.is_checkout,
-            )
-        )
-        score_before = result.tentative_remaining if not result.is_bust else score_before
+    for index, row in enumerate(outcome.dart_rows, start=1):
+        session.add(DartThrow(turn_id=turn.id, dart_number=index, **row))
 
-    state.remaining_score = final.effective_remaining
+    if outcome.new_remaining is not None:
+        state.remaining_score = outcome.new_remaining
+    if outcome.new_game_state is not None:
+        state.game_state = outcome.new_game_state
     state.darts_thrown += len(darts)
     state.turns_taken += 1
 
-    if final.is_checkout:
+    if outcome.leg_won:
         state.has_won = True
         leg.status = LegStatus.COMPLETED
         leg.winner_player_id = player_id

@@ -24,9 +24,21 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.common.errors import InvalidRequest
-from app.matches.models import DartThrow, Leg, LegStatus, Match, MatchStatus, Turn
+from app.matches.models import (
+    DartThrow,
+    GameType,
+    Leg,
+    LegStatus,
+    Match,
+    MatchStatus,
+    Turn,
+)
 from app.players.models import Player
 from app.players.service import get_player
+
+# player_stats implements the 501 formulas (Appendix C); Cricket and
+# Halve It turns must never leak into these aggregates.
+_X01_ONLY = Match.game_type == GameType.X01
 
 
 def _round(value: float | None) -> float | None:
@@ -205,13 +217,18 @@ def player_stats(session: Session, player_id: uuid.UUID) -> dict:
             func.count(
                 case((Turn.is_bust.is_(False) & (Turn.points_scored == 180), 1))
             ),
-        ).where(Turn.player_id == player_id)
+        )
+        .join(Leg, Turn.leg_id == Leg.id)
+        .join(Match, Leg.match_id == Match.id)
+        .where(Turn.player_id == player_id, _X01_ONLY)
     ).one()
 
     total_darts = session.scalar(
         select(func.count(DartThrow.id))
         .join(Turn, DartThrow.turn_id == Turn.id)
-        .where(Turn.player_id == player_id)
+        .join(Leg, Turn.leg_id == Leg.id)
+        .join(Match, Leg.match_id == Match.id)
+        .where(Turn.player_id == player_id, _X01_ONLY)
     )
 
     checkout_attempts, checkout_successes = session.execute(
@@ -220,7 +237,9 @@ def player_stats(session: Session, player_id: uuid.UUID) -> dict:
             func.count(case((DartThrow.is_winning_dart.is_(True), 1))),
         )
         .join(Turn, DartThrow.turn_id == Turn.id)
-        .where(Turn.player_id == player_id)
+        .join(Leg, Turn.leg_id == Leg.id)
+        .join(Match, Leg.match_id == Match.id)
+        .where(Turn.player_id == player_id, _X01_ONLY)
     ).one()
 
     # --- match / leg aggregates --------------------------------------
@@ -231,6 +250,7 @@ def player_stats(session: Session, player_id: uuid.UUID) -> dict:
         ).where(
             Match.status == MatchStatus.COMPLETED,
             (Match.player1_id == player_id) | (Match.player2_id == player_id),
+            _X01_ONLY,
         )
     ).one()
 
@@ -243,6 +263,7 @@ def player_stats(session: Session, player_id: uuid.UUID) -> dict:
         .where(
             Leg.status == LegStatus.COMPLETED,
             (Match.player1_id == player_id) | (Match.player2_id == player_id),
+            _X01_ONLY,
         )
     ).one()
 
@@ -250,7 +271,8 @@ def player_stats(session: Session, player_id: uuid.UUID) -> dict:
         select(func.count(DartThrow.id))
         .join(Turn, DartThrow.turn_id == Turn.id)
         .join(Leg, Turn.leg_id == Leg.id)
-        .where(Turn.player_id == player_id, Leg.winner_player_id == player_id)
+        .join(Match, Leg.match_id == Match.id)
+        .where(Turn.player_id == player_id, Leg.winner_player_id == player_id, _X01_ONLY)
         .group_by(Leg.id)
         .order_by(func.count(DartThrow.id))
         .limit(1)
@@ -265,7 +287,9 @@ def player_stats(session: Session, player_id: uuid.UUID) -> dict:
             func.count(DartThrow.id).label("darts"),
         )
         .join(DartThrow, DartThrow.turn_id == Turn.id)
-        .where(Turn.player_id == player_id)
+        .join(Leg, Turn.leg_id == Leg.id)
+        .join(Match, Leg.match_id == Match.id)
+        .where(Turn.player_id == player_id, _X01_ONLY)
         .group_by(Turn.id, Turn.leg_id, Turn.turn_number, Turn.points_scored)
         .order_by(Turn.leg_id, Turn.turn_number)
     ).all()

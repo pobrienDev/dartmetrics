@@ -27,13 +27,14 @@ def create_match(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> MatchStateResponse:
-    """Create a 501 match against an opponent and start leg 1."""
+    """Create a match (501 or Cricket) against an opponent and start leg 1."""
     match = service.create_match(
         db,
         user=current_user,
         opponent_player_id=body.opponent_player_id,
         best_of_legs=body.best_of_legs,
         starting_player_id=body.starting_player_id,
+        game_type=body.game_type,
     )
     state = service.build_match_state(db, match)
     db.commit()
