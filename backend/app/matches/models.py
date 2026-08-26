@@ -16,6 +16,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -31,6 +32,12 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
+
+
+class GameType(enum.StrEnum):
+    X01 = "x01"  # 501 double-out
+    CRICKET = "cricket"  # race to close, docs/GAME_MODES.md
+    HALVE_IT = "halve_it"  # house rules, docs/GAME_MODES.md
 
 
 class MatchStatus(enum.StrEnum):
@@ -66,6 +73,15 @@ class Match(Base):
         Uuid, ForeignKey("players.id"), nullable=False
     )
     best_of_legs: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    game_type: Mapped[GameType] = mapped_column(
+        Enum(GameType, native_enum=False, length=20),
+        nullable=False,
+        default=GameType.X01,
+        # Enum columns store member NAMES; existing rows are 501 matches
+        server_default=GameType.X01.name,
+    )
+    # Per-mode configuration (e.g. future custom Halve It sequences).
+    game_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     status: Mapped[MatchStatus] = mapped_column(
         Enum(MatchStatus, native_enum=False, length=20),
         nullable=False,
@@ -166,6 +182,9 @@ class LegPlayerState(Base):
     darts_thrown: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     turns_taken: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     has_won: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Mode-specific state (Cricket marks, Halve It round/score);
+    # x01 keeps using remaining_score and leaves this null.
+    game_state: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     def __repr__(self) -> str:
         return f"<LegPlayerState player={self.player_id} remaining={self.remaining_score}>"
@@ -241,6 +260,10 @@ class DartThrow(Base):
         CheckConstraint("multiplier BETWEEN 0 AND 3", name="multiplier_0_to_3"),
         CheckConstraint("score >= 0 AND score <= 60", name="score_in_range"),
         CheckConstraint("NOT is_winning_dart OR is_double", name="winning_dart_is_double"),
+        CheckConstraint(
+            "single_band IS NULL OR single_band IN ('inner', 'outer')",
+            name="single_band_valid",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -252,6 +275,9 @@ class DartThrow(Base):
     multiplier: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     score: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     is_double: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Which single band a single hit landed in ('inner'/'outer').
+    # Only recorded where a game mode cares (Halve It rounds 1-4).
+    single_band: Mapped[str | None] = mapped_column(String(5), nullable=True)
     is_checkout_attempt: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
