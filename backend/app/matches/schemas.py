@@ -67,6 +67,7 @@ class MatchPlayerSummary(BaseModel):
 
 class MatchSummary(BaseModel):
     id: uuid.UUID
+    game_type: GameType
     status: MatchStatus
     best_of_legs: int
     winner_player_id: uuid.UUID | None

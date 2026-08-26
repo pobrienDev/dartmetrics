@@ -18,7 +18,13 @@ import type {
   TurnSummary,
   VisitResponse,
 } from '../api/types'
+import { boardClosed, CRICKET_TARGETS, marksAfterDarts, markSymbol } from '../utils/cricket'
 import { dartLabel, dartScore, visitMustEnd } from '../utils/darts'
+
+interface RecentVisit {
+  turn: TurnSummary
+  labels: string
+}
 
 export function LiveScoringPage() {
   const { matchId } = useParams<{ matchId: string }>()
@@ -27,7 +33,7 @@ export function LiveScoringPage() {
   const [multiplier, setMultiplier] = useState<Exclude<DartMultiplier, 'miss'>>('single')
   const [darts, setDarts] = useState<DartRequest[]>([])
   const [banner, setBanner] = useState<string | null>(null)
-  const [recentTurns, setRecentTurns] = useState<TurnSummary[]>([])
+  const [recentTurns, setRecentTurns] = useState<RecentVisit[]>([])
 
   const matchQuery = useQuery({
     queryKey: ['match', matchId],
@@ -35,6 +41,7 @@ export function LiveScoringPage() {
   })
   const state = matchQuery.data
   const activePlayer = state?.players.find((p) => p.is_active_turn)
+  const isCricket = state?.game_type === 'cricket'
 
   const submitVisit = useMutation({
     mutationFn: (visitDarts: DartRequest[]) =>
@@ -42,15 +49,19 @@ export function LiveScoringPage() {
         method: 'POST',
         body: { player_id: activePlayer?.player_id, darts: visitDarts },
       }),
-    onSuccess: (response) => {
+    onSuccess: (response, visitDarts) => {
       queryClient.setQueryData(['match', matchId], response.state)
-      setRecentTurns((prev) => [response.turn, ...prev].slice(0, 5))
+      const labels = visitDarts.map(dartLabel).join(' ')
+      setRecentTurns((prev) => [{ turn: response.turn, labels }, ...prev].slice(0, 5))
       setDarts([])
       setMultiplier('single')
       if (response.turn.is_checkout) {
-        setBanner(
-          response.state.status === 'completed' ? 'Game shot — match won!' : 'Leg won!',
-        )
+        const wonLeg = response.state.game_type === 'cricket' ? 'Board closed — leg won!' : 'Leg won!'
+        const wonMatch =
+          response.state.game_type === 'cricket'
+            ? 'Board closed — match won!'
+            : 'Game shot — match won!'
+        setBanner(response.state.status === 'completed' ? wonMatch : wonLeg)
       } else if (response.turn.is_bust) {
         setBanner(`Bust! Score stays at ${response.turn.turn_start_score}.`)
       } else {
@@ -79,11 +90,20 @@ export function LiveScoringPage() {
   function addDart(dart: DartRequest) {
     if (!activePlayer || submitVisit.isPending) return
     const next = [...darts, dart]
-    const remaining =
-      (activePlayer.remaining_score ?? 0) - next.reduce((sum, d) => sum + dartScore(d), 0)
 
     // The server is the judge; we just stop collecting darts.
-    if (visitMustEnd(next.length, remaining)) {
+    let mustEnd: boolean
+    if (isCricket) {
+      mustEnd =
+        next.length === 3 || boardClosed(marksAfterDarts(activePlayer.marks ?? {}, next))
+    } else {
+      const remaining =
+        (activePlayer.remaining_score ?? 0) -
+        next.reduce((sum, d) => sum + dartScore(d), 0)
+      mustEnd = visitMustEnd(next.length, remaining)
+    }
+
+    if (mustEnd) {
       submitVisit.mutate(next)
     } else {
       setDarts(next)
@@ -131,9 +151,31 @@ export function LiveScoringPage() {
               {player.display_name}
               {player.is_active_turn && !finished && ' 🎯'}
             </p>
-            <p className="my-2 text-6xl font-bold tabular-nums">
-              {player.remaining_score ?? '—'}
-            </p>
+            {isCricket ? (
+              <div className="my-2 grid grid-cols-7 gap-1">
+                {CRICKET_TARGETS.map((target) => {
+                  const count = player.marks?.[String(target)] ?? 0
+                  return (
+                    <div key={target} className="text-center">
+                      <p className="text-xs text-gray-400">
+                        {target === 25 ? 'Bull' : target}
+                      </p>
+                      <p
+                        className={`text-2xl font-bold ${
+                          count >= 3 ? 'text-emerald-400' : 'text-white'
+                        }`}
+                      >
+                        {markSymbol(count)}
+                      </p>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <p className="my-2 text-6xl font-bold tabular-nums">
+                {player.remaining_score ?? '—'}
+              </p>
+            )}
             <p className="text-sm text-gray-400">Legs: {player.legs_won}</p>
           </div>
         ))}
@@ -240,18 +282,27 @@ export function LiveScoringPage() {
             <div className="mt-6">
               <p className="mb-2 text-sm font-medium text-gray-400">Recent visits</p>
               <ul className="space-y-1 text-sm">
-                {recentTurns.map((turn) => {
+                {recentTurns.map(({ turn, labels }) => {
                   const who = state.players.find((p) => p.player_id === turn.player_id)
                   return (
                     <li key={turn.id} className="flex justify-between rounded-lg bg-gray-800 px-3 py-2">
                       <span>{who?.display_name}</span>
                       <span className="font-mono">
-                        {turn.is_bust
-                          ? 'BUST'
-                          : turn.is_checkout
-                            ? `${turn.points_scored} ✓ out`
-                            : turn.points_scored}
-                        {'  '}({turn.turn_start_score} → {turn.turn_end_score})
+                        {isCricket ? (
+                          <>
+                            {labels}
+                            {turn.is_checkout && ' ◎ closed'}
+                          </>
+                        ) : (
+                          <>
+                            {turn.is_bust
+                              ? 'BUST'
+                              : turn.is_checkout
+                                ? `${turn.points_scored} ✓ out`
+                                : turn.points_scored}
+                            {'  '}({turn.turn_start_score} → {turn.turn_end_score})
+                          </>
+                        )}
                       </span>
                     </li>
                   )

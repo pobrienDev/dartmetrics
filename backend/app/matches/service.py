@@ -191,6 +191,7 @@ def list_matches(
         items.append(
             {
                 "id": match.id,
+                "game_type": match.game_type,
                 "status": match.status,
                 "best_of_legs": match.best_of_legs,
                 "winner_player_id": match.winner_player_id,

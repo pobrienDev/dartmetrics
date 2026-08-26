@@ -6,13 +6,19 @@ import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { api, ApiError } from '../api/client'
-import type { MatchState, PlayerResponse } from '../api/types'
+import type { GameType, MatchState, PlayerResponse } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+
+const GAME_CHOICES: { value: GameType; label: string; hint: string }[] = [
+  { value: 'x01', label: '501', hint: 'double-out' },
+  { value: 'cricket', label: 'Cricket', hint: 'race to close' },
+]
 
 export function NewMatchPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
 
+  const [gameType, setGameType] = useState<GameType>('x01')
   const [opponentId, setOpponentId] = useState<string>('')
   const [guestName, setGuestName] = useState('')
   const [bestOf, setBestOf] = useState(3)
@@ -55,6 +61,7 @@ export function NewMatchPage() {
         body: {
           opponent_player_id: opponent,
           best_of_legs: bestOf,
+          game_type: gameType,
           starting_player_id: opponentStarts ? opponent : null,
         },
       })
@@ -84,9 +91,32 @@ export function NewMatchPage() {
       </header>
 
       <main className="mx-auto max-w-lg px-6 py-8">
-        <h1 className="mb-6 text-2xl font-bold text-gray-900">New 501 match</h1>
+        <h1 className="mb-6 text-2xl font-bold text-gray-900">New match</h1>
 
         <form onSubmit={handleSubmit} className="space-y-6 rounded-xl bg-white p-6 shadow-sm">
+          <fieldset>
+            <legend className="mb-2 text-sm font-medium text-gray-700">Game</legend>
+            <div className="flex gap-2">
+              {GAME_CHOICES.map((game) => (
+                <button
+                  key={game.value}
+                  type="button"
+                  onClick={() => setGameType(game.value)}
+                  className={`flex-1 rounded-lg border px-3 py-3 text-sm font-medium ${
+                    gameType === game.value
+                      ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
+                      : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  {game.label}
+                  <span className="block text-xs font-normal text-gray-500">
+                    {game.hint}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </fieldset>
+
           <fieldset>
             <legend className="mb-2 text-sm font-medium text-gray-700">Opponent</legend>
             <select

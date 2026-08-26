@@ -50,6 +50,8 @@ function MatchCard({ match }: { match: MatchListItem }) {
             month: 'short',
             year: 'numeric',
           })}
+          {' · '}
+          {match.game_type === 'x01' ? '501' : match.game_type.replace('_', ' ')}
           {' · '}best of {match.best_of_legs}
           {winnerName && ` · ${winnerName} won`}
         </p>

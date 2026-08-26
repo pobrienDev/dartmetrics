@@ -30,12 +30,14 @@ export interface ApiErrorBody {
 // --- Matches ---------------------------------------------------------------
 
 export type MatchStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancelled'
+export type GameType = 'x01' | 'cricket' | 'halve_it'
 
 export interface PlayerState {
   player_id: string
   display_name: string
   legs_won: number
-  remaining_score: number | null
+  remaining_score: number | null // x01 only
+  marks: Record<string, number> | null // cricket only: target -> 0..3
   is_active_turn: boolean
 }
 
@@ -49,6 +51,7 @@ export interface LegState {
 
 export interface MatchState {
   id: string
+  game_type: GameType
   status: MatchStatus
   best_of_legs: number
   legs_required_to_win: number
@@ -82,6 +85,7 @@ export interface VisitResponse {
 
 export interface MatchListItem {
   id: string
+  game_type: GameType
   status: MatchStatus
   best_of_legs: number
   winner_player_id: string | null
