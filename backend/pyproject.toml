@@ -3,7 +3,9 @@ name = "dartmetrics-backend"
 version = "0.1.0"
 description = "DartMetrics backend: 501 scoring engine, API, and statistics"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "sqlalchemy>=2.0",
+]
 
 [dependency-groups]
 dev = [
