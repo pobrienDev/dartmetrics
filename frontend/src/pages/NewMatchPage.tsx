@@ -8,7 +8,7 @@ import { Link, useNavigate } from 'react-router-dom'
 
 import { api, ApiError } from '../api/client'
 import type { BotDifficulty, GameType, MatchState, PlayerResponse } from '../api/types'
-import { useAuth } from '../auth/AuthContext'
+import { useAuth } from '../auth/useAuth'
 import { BOT_CHOICES } from '../utils/bots'
 
 const GAME_CHOICES: { value: GameType; label: string; hint: string }[] = [

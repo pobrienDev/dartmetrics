@@ -6,7 +6,7 @@ import { Link } from 'react-router-dom'
 
 import { api } from '../api/client'
 import type { MatchListResponse, PlayerResponse, PlayerStats } from '../api/types'
-import { useAuth } from '../auth/AuthContext'
+import { useAuth } from '../auth/useAuth'
 
 export function DashboardPage() {
   const { user, logout } = useAuth()
