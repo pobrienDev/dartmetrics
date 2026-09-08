@@ -55,6 +55,7 @@ from app.scoring.domain import DartInput, Multiplier
 from app.scoring.engine import apply_dart
 from app.scoring.halve_it import (
     DARTS_PER_ROUND,
+    STARTING_SCORE as HALVE_IT_STARTING_SCORE,
     apply_halve_it_visit,
     round_for_number,
 )
@@ -130,7 +131,7 @@ def _start_leg(
     if match.game_type is GameType.CRICKET:
         game_state = {str(t): 0 for t in initial_marks()}
     elif match.game_type is GameType.HALVE_IT:
-        game_state = {"score": 0, "round": 1}
+        game_state = {"score": HALVE_IT_STARTING_SCORE, "round": 1}
     else:
         game_state = None
     session.add_all(
@@ -466,7 +467,7 @@ def _replay_halve_it(
             )
         )
 
-    score, round_number = 0, 1
+    score, round_number = HALVE_IT_STARTING_SCORE, 1
     for turn_number in sorted(visits):
         score = apply_halve_it_visit(score, round_number, visits[turn_number]).new_score
         round_number += 1
@@ -685,8 +686,11 @@ def _play_cricket_visit(
 def halve_it_state(game_state: dict | None) -> tuple[int, int]:
     """(score, next round number) from stored state."""
     if not game_state:
-        return 0, 1
-    return int(game_state.get("score", 0)), int(game_state.get("round", 1))
+        return HALVE_IT_STARTING_SCORE, 1
+    return (
+        int(game_state.get("score", HALVE_IT_STARTING_SCORE)),
+        int(game_state.get("round", 1)),
+    )
 
 
 def _play_halve_it_visit(

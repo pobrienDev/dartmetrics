@@ -74,7 +74,7 @@ def test_match_starts_at_round_one_outer_black(client, setup):
     assert match["game_type"] == "halve_it"
     for player in match["players"]:
         assert player["remaining_score"] is None
-        assert player["score"] == 0
+        assert player["score"] == 40  # house rule: everyone starts on 40
         assert player["round"] == 1
         assert player["round_target"] == "outer_black"
 
@@ -85,7 +85,7 @@ def test_scoring_round_adds_face_value_and_advances(client, setup):
 
     body = visit(client, setup, match["id"], own, [outer(20), outer(1), MISS])
     me = player_of(body["state"], own)
-    assert me["score"] == 20  # the 1 is white
+    assert me["score"] == 60  # 40 + 20; the 1 is white
     assert me["round"] == 2
     assert me["round_target"] == "outer_white"
 
@@ -99,10 +99,10 @@ def test_missed_round_halves_rounding_up(client, setup):
     match = make_match(client, setup)
     own, guest = setup["own"]["id"], setup["guest"]["id"]
 
-    visit(client, setup, match["id"], own, [outer(20), outer(13), outer(12)])  # 45
-    visit(client, setup, match["id"], guest, [MISS, MISS, MISS])  # halve 0 -> 0
+    visit(client, setup, match["id"], own, [outer(20), outer(13), outer(12)])  # 85
+    visit(client, setup, match["id"], guest, [MISS, MISS, MISS])  # halve 40 -> 20
     body = visit(client, setup, match["id"], own, [MISS, MISS, MISS])  # round 2 miss
-    assert player_of(body["state"], own)["score"] == 23  # 45 halved up
+    assert player_of(body["state"], own)["score"] == 43  # 85 halved up
 
 
 def test_band_on_a_double_is_rejected(client, setup):
@@ -126,13 +126,14 @@ def test_wrong_dart_count_is_rejected(client, setup):
 
 
 def play_out_match(client, setup, match_id):
-    """P1 scores 20 in round 1, everything else is missed by both."""
+    """Both miss rounds 1-8 (40 halves down to 1 for each); P1 lands a
+    red bull in round 9 to finish 51-1."""
     own, guest = setup["own"]["id"], setup["guest"]["id"]
-    visit(client, setup, match_id, own, [outer(20), MISS, MISS])
-    visit(client, setup, match_id, guest, [MISS, MISS, MISS])
-    for _ in range(8):  # rounds 2-9
+    for _ in range(8):  # rounds 1-8
         visit(client, setup, match_id, own, [MISS, MISS, MISS])
         visit(client, setup, match_id, guest, [MISS, MISS, MISS])
+    visit(client, setup, match_id, own, [INNER_BULL, MISS, MISS])
+    visit(client, setup, match_id, guest, [MISS, MISS, MISS])
 
 
 def test_higher_score_after_nine_rounds_wins(client, setup):
@@ -143,9 +144,9 @@ def test_higher_score_after_nine_rounds_wins(client, setup):
     final = client.get(f"/api/v1/matches/{match['id']}", headers=setup["headers"]).json()
     assert final["status"] == "completed"
     assert final["winner_player_id"] == own
-    # 20 halved eight times (rounding up) grinds down to 1
-    assert player_of(final, own)["score"] == 1
-    assert player_of(final, setup["guest"]["id"])["score"] == 0
+    # 40 halved eight times (rounding up) grinds down to 1, then +50
+    assert player_of(final, own)["score"] == 51
+    assert player_of(final, setup["guest"]["id"])["score"] == 1
 
 
 def test_win_can_land_on_the_other_player(client, setup):
@@ -162,7 +163,7 @@ def test_win_can_land_on_the_other_player(client, setup):
 def test_tie_after_nine_rounds_goes_to_red_bull_tiebreak(client, setup):
     match = make_match(client, setup)
     own, guest = setup["own"]["id"], setup["guest"]["id"]
-    for _ in range(9):  # both miss everything: 0-0 tie
+    for _ in range(9):  # both miss everything: 40 grinds to a 1-1 tie
         visit(client, setup, match["id"], own, [MISS, MISS, MISS])
         visit(client, setup, match["id"], guest, [MISS, MISS, MISS])
 
@@ -171,7 +172,7 @@ def test_tie_after_nine_rounds_goes_to_red_bull_tiebreak(client, setup):
     assert player_of(state, own)["round"] == 10
     assert player_of(state, own)["round_target"] == "red_bull"
 
-    # Patrick lands a red bull, Gary misses: tie broken 50-0
+    # Patrick lands a red bull, Gary misses: tie broken 51-1
     visit(client, setup, match["id"], own, [INNER_BULL, MISS, MISS])
     body = visit(client, setup, match["id"], guest, [MISS, MISS, MISS])
     assert body["state"]["status"] == "completed"
@@ -181,20 +182,20 @@ def test_tie_after_nine_rounds_goes_to_red_bull_tiebreak(client, setup):
 def test_undo_restores_score_and_round(client, setup):
     match = make_match(client, setup)
     own = setup["own"]["id"]
-    visit(client, setup, match["id"], own, [outer(20), outer(13), MISS])  # 33
+    visit(client, setup, match["id"], own, [outer(20), outer(13), MISS])  # 73
 
     response = client.delete(
         f"/api/v1/matches/{match['id']}/visits/latest", headers=setup["headers"]
     )
     assert response.status_code == 200
     me = player_of(response.json(), own)
-    assert me["score"] == 0
+    assert me["score"] == 40
     assert me["round"] == 1
     assert me["is_active_turn"]
 
     # Re-throw works and replays cleanly
     body = visit(client, setup, match["id"], own, [outer(10), MISS, MISS])
-    assert player_of(body["state"], own)["score"] == 10
+    assert player_of(body["state"], own)["score"] == 50
 
 
 def test_halve_it_does_not_pollute_501_statistics(client, setup):

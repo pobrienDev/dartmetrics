@@ -33,7 +33,8 @@ here. 501 rules live in the README.
 ## Halve It — house rules
 
 - Two players; both play every round, starter first, then opponent.
-  Scores start at 0.
+  **Scores start at 40**, so a missed opening round already halves
+  something.
 - Each round is exactly **three darts** (no early end).
 - A dart "qualifies" if it hits the round's target area. **Qualifying
   darts add their face value** (D16 adds 32, T5 adds 15, etc.).

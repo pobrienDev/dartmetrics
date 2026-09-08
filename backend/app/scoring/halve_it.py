@@ -3,7 +3,8 @@
 Unlike 501 and Cricket, Halve It is evaluated per complete three-dart
 round: qualifying darts add their face value; if none qualify (or the
 63 round's total is wrong), the player's score is halved, rounding up.
-The round sequence is fixed; ties are broken by extra Red Bull rounds.
+Both players start on 40. The round sequence is fixed; ties are broken
+by extra Red Bull rounds.
 """
 
 import enum
@@ -18,6 +19,9 @@ WHITE_SEGMENTS = frozenset({1, 4, 6, 15, 17, 19, 16, 11, 9, 5})
 
 DARTS_PER_ROUND = 3
 SIXTY_THREE_TARGET = 63
+# House rule: everyone starts with 40 so a missed opening round already
+# costs something (0 halved would stay 0).
+STARTING_SCORE = 40
 
 
 class HalveItRound(enum.StrEnum):
