@@ -13,12 +13,15 @@ export interface TokenResponse {
   token_type: string
 }
 
+export type BotDifficulty = 'noob' | 'easy' | 'medium' | 'hard' | 'pro'
+
 export interface PlayerResponse {
   id: string
   user_id: string | null
   display_name: string
   nickname: string | null
   is_active: boolean
+  bot_difficulty: BotDifficulty | null // set for computer opponents
   created_at: string
 }
 
@@ -41,6 +44,7 @@ export interface PlayerState {
   score: number | null // halve_it only
   round: number | null // halve_it only (1-based)
   round_target: string | null // halve_it only, e.g. "outer_black"
+  bot_difficulty: BotDifficulty | null // set when this player is a bot
   is_active_turn: boolean
 }
 
@@ -85,6 +89,11 @@ export interface TurnSummary {
 export interface VisitResponse {
   turn: TurnSummary
   state: MatchState
+}
+
+// A bot's visit also reports the darts it threw.
+export interface BotVisitResponse extends VisitResponse {
+  darts: DartRequest[]
 }
 
 export interface MatchListItem {

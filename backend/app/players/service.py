@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.models import User
 from app.common.errors import Forbidden, PlayerNotFound, PlayerProfileExists
-from app.players.models import Player
+from app.players.models import BotDifficulty, Player
 from app.players.schemas import PlayerUpdateRequest
 
 
@@ -38,11 +38,45 @@ def create_player(
     return player
 
 
+BOT_DISPLAY_NAMES: dict[BotDifficulty, str] = {
+    BotDifficulty.NOOB: "Noob Bot",
+    BotDifficulty.EASY: "Easy Bot",
+    BotDifficulty.MEDIUM: "Medium Bot",
+    BotDifficulty.HARD: "Hard Bot",
+    BotDifficulty.PRO: "Pro Bot",
+}
+
+
+def list_bots(session: Session) -> list[Player]:
+    """The five shared bot opponents, easiest first, created on first
+    use so a fresh database needs no seeding step."""
+    existing = {
+        p.bot_difficulty: p
+        for p in session.scalars(select(Player).where(Player.bot_difficulty.is_not(None)))
+    }
+    bots = []
+    for difficulty in BotDifficulty:
+        bot = existing.get(difficulty.value)
+        if bot is None:
+            bot = Player(
+                user_id=None,
+                display_name=BOT_DISPLAY_NAMES[difficulty],
+                bot_difficulty=difficulty.value,
+            )
+            session.add(bot)
+        bots.append(bot)
+    session.flush()
+    return bots
+
+
 def list_players(
     session: Session, query: str | None, limit: int
 ) -> list[Player]:
-    """Active players, optionally filtered by name, for opponent pickers."""
-    stmt = select(Player).where(Player.is_active.is_(True))
+    """Active human players, optionally filtered by name, for opponent
+    pickers. Bots are listed separately by list_bots."""
+    stmt = select(Player).where(
+        Player.is_active.is_(True), Player.bot_difficulty.is_(None)
+    )
     if query:
         stmt = stmt.where(Player.display_name.ilike(f"%{query}%"))
     return list(session.scalars(stmt.order_by(Player.display_name).limit(limit)))

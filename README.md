@@ -40,6 +40,28 @@ the Phase 0 specification; the scoring engine's unit tests mirror its
 acceptance matrix one-to-one (`app/tests/unit/test_engine.py`, cases
 S01–S16).
 
+## Bot opponents
+
+Any game mode can be played against a computer opponent. Five shared
+bots exist, easiest to hardest: **Noob, Easy, Medium, Hard, Pro**.
+Each is an ordinary guest player with `bot_difficulty` set, so bot
+matches appear in history and statistics like any other.
+
+The bot engine (`app/scoring/bot.py`) is pure: it chooses a sensible
+aim (T20 while scoring, the right double or a setup shot when a
+finish is on, the highest open Cricket target, the current Halve It
+round's target) and then simulates where the dart lands from the
+difficulty's accuracy table. Missed triples mostly drop into the big
+single; wilder misses stray into neighbouring segments; the worst
+bots sometimes miss the board. Aiming at T20, the bots average about
+32, 47, 63, 81 and 100 per three darts respectively.
+
+Bot visits are recorded through the same turn service as human ones
+(`POST /api/v1/matches/{id}/bot-visit`, called by the scoring screen
+whenever the bot is up). Undo against a bot removes the bot's reply
+and your visit before it, so you land back on the score you want to
+re-enter.
+
 ## Authentication model
 
 - Passwords are hashed with **Argon2id** (via pwdlib); plaintext never
@@ -97,9 +119,9 @@ Integration tests skip automatically if PostgreSQL is not running.
 ```
 backend/
   app/
-    scoring/      pure 501 domain engine (no framework dependencies)
+    scoring/      pure game engines + bot simulator (no framework dependencies)
     auth/         User model (accounts)
-    players/      Player model (competitors; guests supported)
+    players/      Player model (competitors; guests and bots supported)
     matches/      Match, Leg, LegPlayerState, Turn, DartThrow + turn service
     common/       domain error types
     tests/        unit and integration suites

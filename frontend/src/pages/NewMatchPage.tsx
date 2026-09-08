@@ -1,13 +1,15 @@
-﻿// New Match: pick an existing opponent or create a guest, choose the
-// match length and who throws first, then jump into live scoring.
+﻿// New Match: pick an existing opponent, create a guest, or choose a
+// bot difficulty; choose the match length and who throws first, then
+// jump into live scoring.
 
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { api, ApiError } from '../api/client'
-import type { GameType, MatchState, PlayerResponse } from '../api/types'
+import type { BotDifficulty, GameType, MatchState, PlayerResponse } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import { BOT_CHOICES } from '../utils/bots'
 
 const GAME_CHOICES: { value: GameType; label: string; hint: string }[] = [
   { value: 'x01', label: '501', hint: 'double-out' },
@@ -15,11 +17,15 @@ const GAME_CHOICES: { value: GameType; label: string; hint: string }[] = [
   { value: 'halve_it', label: 'Halve It', hint: 'house rules' },
 ]
 
+type OpponentKind = 'human' | 'bot'
+
 export function NewMatchPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
 
   const [gameType, setGameType] = useState<GameType>('x01')
+  const [opponentKind, setOpponentKind] = useState<OpponentKind>('human')
+  const [botDifficulty, setBotDifficulty] = useState<BotDifficulty>('medium')
   const [opponentId, setOpponentId] = useState<string>('')
   const [guestName, setGuestName] = useState('')
   const [bestOf, setBestOf] = useState(3)
@@ -49,7 +55,13 @@ export function NewMatchPage() {
       }
 
       let opponent = opponentId
-      if (!opponent) {
+      if (opponentKind === 'bot') {
+        // The backend keeps one shared bot per difficulty.
+        const bots = await api<PlayerResponse[]>('/api/v1/players/bots')
+        const bot = bots.find((b) => b.bot_difficulty === botDifficulty)
+        if (!bot) throw new Error(`No ${botDifficulty} bot is available.`)
+        opponent = bot.id
+      } else if (!opponent) {
         const guest = await api<PlayerResponse>('/api/v1/players', {
           method: 'POST',
           body: { display_name: guestName.trim(), is_guest: true },
@@ -76,7 +88,7 @@ export function NewMatchPage() {
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
     setError(null)
-    if (!opponentId && guestName.trim() === '') {
+    if (opponentKind === 'human' && !opponentId && guestName.trim() === '') {
       setError('Choose an opponent or enter a guest name.')
       return
     }
@@ -120,27 +132,78 @@ export function NewMatchPage() {
 
           <fieldset>
             <legend className="mb-2 text-sm font-medium text-gray-700">Opponent</legend>
-            <select
-              value={opponentId}
-              onChange={(e) => setOpponentId(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-emerald-500 focus:outline-none"
-            >
-              <option value="">— New guest —</option>
-              {opponents.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.display_name}
-                  {p.user_id === null ? ' (guest)' : ''}
-                </option>
+            <div className="mb-2 flex gap-2">
+              {(
+                [
+                  { value: 'human', label: 'Person' },
+                  { value: 'bot', label: 'Bot' },
+                ] as { value: OpponentKind; label: string }[]
+              ).map((kind) => (
+                <button
+                  key={kind.value}
+                  type="button"
+                  onClick={() => setOpponentKind(kind.value)}
+                  className={`flex-1 rounded-lg border px-3 py-3 text-sm font-medium ${
+                    opponentKind === kind.value
+                      ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
+                      : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  {kind.label}
+                </button>
               ))}
-            </select>
-            {opponentId === '' && (
-              <input
-                placeholder="Guest name"
-                value={guestName}
-                onChange={(e) => setGuestName(e.target.value)}
-                maxLength={100}
-                className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-emerald-500 focus:outline-none"
-              />
+            </div>
+            {opponentKind === 'bot' ? (
+              <div
+                role="radiogroup"
+                aria-label="Bot difficulty"
+                className="grid grid-cols-5 gap-2"
+              >
+                {BOT_CHOICES.map((bot) => (
+                  <button
+                    key={bot.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={botDifficulty === bot.value}
+                    onClick={() => setBotDifficulty(bot.value)}
+                    className={`rounded-lg border px-1 py-3 text-sm font-medium ${
+                      botDifficulty === bot.value
+                        ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
+                        : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    {bot.label}
+                    <span className="block text-xs font-normal text-gray-500">
+                      {bot.hint}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <>
+                <select
+                  value={opponentId}
+                  onChange={(e) => setOpponentId(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-emerald-500 focus:outline-none"
+                >
+                  <option value="">— New guest —</option>
+                  {opponents.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.display_name}
+                      {p.user_id === null ? ' (guest)' : ''}
+                    </option>
+                  ))}
+                </select>
+                {opponentId === '' && (
+                  <input
+                    placeholder="Guest name"
+                    value={guestName}
+                    onChange={(e) => setGuestName(e.target.value)}
+                    maxLength={100}
+                    className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-emerald-500 focus:outline-none"
+                  />
+                )}
+              </>
             )}
           </fieldset>
 
@@ -187,7 +250,7 @@ export function NewMatchPage() {
                     : 'border-gray-300 text-gray-700 hover:bg-gray-50'
                 }`}
               >
-                Opponent
+                {opponentKind === 'bot' ? 'Bot' : 'Opponent'}
               </button>
             </div>
           </fieldset>

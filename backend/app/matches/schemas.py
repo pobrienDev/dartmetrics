@@ -40,6 +40,7 @@ class PlayerStateResponse(BaseModel):
     score: int | None = None  # halve_it only
     round: int | None = None  # halve_it only: 1-based next round
     round_target: str | None = None  # halve_it only, e.g. "outer_black"
+    bot_difficulty: str | None = None  # set when this player is a bot
     is_active_turn: bool
 
 
@@ -131,3 +132,24 @@ class TurnSummary(BaseModel):
 class VisitResponse(BaseModel):
     turn: TurnSummary
     state: MatchStateResponse
+
+
+class DartResponse(BaseModel):
+    segment: int | None
+    multiplier: Literal["miss", "single", "double", "triple"]
+    band: Literal["inner", "outer"] | None = None
+
+    @classmethod
+    def from_dart_input(cls, dart: DartInput) -> "DartResponse":
+        return cls(
+            segment=dart.segment,
+            multiplier=dart.multiplier.name.lower(),
+            band=dart.band,
+        )
+
+
+class BotVisitResponse(VisitResponse):
+    """A bot's visit also reports the darts it threw, since the client
+    never entered them."""
+
+    darts: list[DartResponse]

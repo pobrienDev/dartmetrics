@@ -14,6 +14,7 @@ attempts without requiring UI intent data; revisit when the scoring
 UI can capture the player's actual target.
 """
 
+import random
 import uuid
 from datetime import datetime, timezone
 
@@ -29,6 +30,7 @@ from app.common.errors import (
     MatchNotActive,
     MatchNotFound,
     MissingPlayerProfile,
+    NotBotsTurn,
     NotPlayersTurn,
     PlayerNotFound,
     PlayerNotInMatch,
@@ -46,7 +48,8 @@ from app.matches.models import (
     MatchStatus,
     Turn,
 )
-from app.players.models import Player
+from app.players.models import BotDifficulty, Player
+from app.scoring import bot
 from app.scoring.cricket import apply_cricket_dart, initial_marks
 from app.scoring.domain import DartInput, Multiplier
 from app.scoring.engine import apply_dart
@@ -291,6 +294,60 @@ def record_match_visit(
     return turn, match
 
 
+def record_bot_visit(
+    session: Session,
+    user: User,
+    match_id: uuid.UUID,
+    rng: random.Random | None = None,
+) -> tuple[Turn, Match, list[DartInput]]:
+    """Generate and record a visit for the bot whose turn it is.
+
+    The darts come from the pure bot engine and are then recorded
+    through record_match_visit, so a bot visit obeys every rule and
+    counts toward statistics exactly like a human's. The client drives
+    the timing (it calls this when the scoreboard shows a bot as
+    active), which keeps the API stateless and lets the UI pace the
+    bot's throw.
+    """
+    match = get_match(session, match_id)
+    _ensure_can_score(session, user, match)
+    if match.status is not MatchStatus.IN_PROGRESS:
+        raise MatchNotActive(f"Match is {match.status}; scoring is not allowed.")
+
+    leg = next(
+        (leg for leg in match.legs if leg.status is LegStatus.IN_PROGRESS), None
+    )
+    if leg is None:
+        raise LegNotActive("The match has no active leg.")
+
+    states = {
+        s.player_id: s
+        for s in session.scalars(
+            select(LegPlayerState).where(LegPlayerState.leg_id == leg.id)
+        )
+    }
+    active_id = _expected_player_id(leg, sum(s.turns_taken for s in states.values()))
+    active = session.get(Player, active_id)
+    if not active.is_bot:
+        raise NotBotsTurn("It is a human player's turn, not the bot's.")
+
+    darts = generate_bot_darts(match, states[active_id], active, rng or random.Random())
+    turn, match = record_match_visit(session, user, match_id, active_id, darts)
+    return turn, match, darts
+
+
+def generate_bot_darts(
+    match: Match, state: LegPlayerState, player: Player, rng: random.Random
+) -> list[DartInput]:
+    accuracy = bot.ACCURACY[BotDifficulty(player.bot_difficulty)]
+    if match.game_type is GameType.CRICKET:
+        return bot.cricket_visit(marks_from_game_state(state.game_state), accuracy, rng)
+    if match.game_type is GameType.HALVE_IT:
+        _, round_number = halve_it_state(state.game_state)
+        return bot.halve_it_visit(round_number, accuracy, rng)
+    return bot.x01_visit(state.remaining_score, accuracy, rng)
+
+
 def abandon_match(session: Session, user: User, match_id: uuid.UUID) -> Match:
     """Cancel an in-progress match. No winner is recorded, and
     cancelled matches are excluded from win statistics. The active
@@ -311,7 +368,13 @@ def abandon_match(session: Session, user: User, match_id: uuid.UUID) -> Match:
 def undo_latest_visit(session: Session, user: User, match_id: uuid.UUID) -> Match:
     """Remove the most recent visit in the active leg and restore the
     scoreboard (spec 13.4: latest active-leg visit only — completed
-    legs are immutable in the MVP)."""
+    legs are immutable in the MVP).
+
+    Against a bot, "undo" means undoing the human's last visit: if the
+    latest visit is the bot's reply, both it and the human visit before
+    it are removed, so the human is back on the score they want to
+    re-enter rather than watching the bot simply throw again.
+    """
     match = get_match(session, match_id)
     _ensure_can_score(session, user, match)
 
@@ -324,43 +387,58 @@ def undo_latest_visit(session: Session, user: User, match_id: uuid.UUID) -> Matc
     if leg is None:
         raise LegNotActive("The match has no active leg.")
 
-    latest = session.scalars(
-        select(Turn)
-        .where(Turn.leg_id == leg.id)
-        .order_by(Turn.turn_number.desc())
-        .limit(1)
-    ).first()
+    latest = _latest_turn(session, leg)
     if latest is None:
         raise UndoNotAvailable(
             "No visit exists in the active leg to undo. Completed legs "
             "cannot be modified."
         )
 
+    _remove_turn(session, match, leg, latest)
+
+    if session.get(Player, latest.player_id).is_bot:
+        previous = _latest_turn(session, leg)
+        if previous is not None and not session.get(Player, previous.player_id).is_bot:
+            _remove_turn(session, match, leg, previous)
+
+    session.flush()
+    return match
+
+
+def _latest_turn(session: Session, leg: Leg) -> Turn | None:
+    return session.scalars(
+        select(Turn)
+        .where(Turn.leg_id == leg.id)
+        .order_by(Turn.turn_number.desc())
+        .limit(1)
+    ).first()
+
+
+def _remove_turn(session: Session, match: Match, leg: Leg, turn: Turn) -> None:
     state = session.scalar(
         select(LegPlayerState).where(
             LegPlayerState.leg_id == leg.id,
-            LegPlayerState.player_id == latest.player_id,
+            LegPlayerState.player_id == turn.player_id,
         )
     )
-    state.darts_thrown -= len(latest.dart_throws)
+    state.darts_thrown -= len(turn.dart_throws)
     state.turns_taken -= 1
 
-    for dart in latest.dart_throws:
+    for dart in turn.dart_throws:
         session.delete(dart)
-    session.delete(latest)
+    session.delete(turn)
     session.flush()
 
     if match.game_type is GameType.CRICKET:
         # Marks aren't reversible per turn; rebuild them by replaying the
         # player's surviving darts — the raw events are the truth.
-        state.game_state = _replay_cricket_marks(session, leg.id, latest.player_id)
+        state.game_state = _replay_cricket_marks(session, leg.id, turn.player_id)
     elif match.game_type is GameType.HALVE_IT:
-        state.game_state = _replay_halve_it(session, leg.id, latest.player_id)
+        state.game_state = _replay_halve_it(session, leg.id, turn.player_id)
     else:
-        state.remaining_score = latest.turn_start_score
+        state.remaining_score = turn.turn_start_score
 
     session.flush()
-    return match
 
 
 def _replay_halve_it(
@@ -459,6 +537,7 @@ def build_match_state(session: Session, match: Match) -> dict:
                 if state and is_cricket
                 else None
             ),
+            "bot_difficulty": player.bot_difficulty,
             "is_active_turn": player_id == active_player_id,
         }
         if is_halve_it and state:

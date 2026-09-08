@@ -5,13 +5,18 @@
 // the turn (reached 0 or an impossible score). That last check is a
 // UI convenience only — the backend re-validates everything and its
 // response is the truth the screen re-renders from.
+//
+// Against a bot, the page asks the server to throw for the bot
+// whenever the scoreboard shows the bot as active; a short pause
+// keeps the exchange readable.
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { api, ApiError } from '../api/client'
 import type {
+  BotVisitResponse,
   DartMultiplier,
   DartRequest,
   MatchState,
@@ -42,6 +47,8 @@ function defaultBand(roundTarget: string | null | undefined): 'inner' | 'outer' 
   return roundTarget?.startsWith('inner') ? 'inner' : 'outer'
 }
 
+const BOT_THROW_DELAY_MS = 1200
+
 export function LiveScoringPage() {
   const { matchId } = useParams<{ matchId: string }>()
   const queryClient = useQueryClient()
@@ -61,11 +68,64 @@ export function LiveScoringPage() {
   const isCricket = state?.game_type === 'cricket'
   const isHalveIt = state?.game_type === 'halve_it'
   const activeTarget = isHalveIt ? activePlayer?.round_target : null
+  const botIsUp = state?.status === 'in_progress' && activePlayer?.bot_difficulty != null
 
   // Band rounds pre-select their own band; the player can override.
   useEffect(() => {
     setBand(defaultBand(activeTarget))
   }, [activeTarget])
+
+  // Shared by human and bot visits: apply the server's state and
+  // announce what happened.
+  function applyVisit(response: VisitResponse, visitDarts: DartRequest[], who: string) {
+    // For Halve It, compare against the cached state to spot a halving
+    const before = queryClient.getQueryData<MatchState>(['match', matchId])
+    const oldScore = before?.players.find(
+      (p) => p.player_id === response.turn.player_id,
+    )?.score
+    queryClient.setQueryData(['match', matchId], response.state)
+    const labels = visitDarts.map(dartLabel).join(' ')
+    setRecentTurns((prev) => [{ turn: response.turn, labels }, ...prev].slice(0, 5))
+    setDarts([])
+    setMultiplier('single')
+    if (response.state.game_type === 'halve_it' && !response.turn.is_checkout) {
+      const newScore = response.state.players.find(
+        (p) => p.player_id === response.turn.player_id,
+      )?.score
+      if (oldScore != null && newScore != null) {
+        setBanner(
+          newScore < oldScore
+            ? `${who}: halved! ${oldScore} → ${newScore}`
+            : newScore > oldScore
+              ? `${who}: +${newScore - oldScore}`
+              : null,
+        )
+      }
+      return
+    }
+    if (response.turn.is_checkout) {
+      const game = response.state.game_type
+      const wonLeg =
+        game === 'cricket'
+          ? 'Board closed — leg won!'
+          : game === 'halve_it'
+            ? 'Game decided on points!'
+            : 'Leg won!'
+      const wonMatch =
+        game === 'cricket'
+          ? 'Board closed — match won!'
+          : game === 'halve_it'
+            ? 'Match decided on points!'
+            : 'Game shot — match won!'
+      setBanner(response.state.status === 'completed' ? wonMatch : wonLeg)
+    } else if (response.turn.is_bust) {
+      setBanner(`${who}: bust! Score stays at ${response.turn.turn_start_score}.`)
+    } else if (who !== 'You') {
+      setBanner(`${who} threw ${labels} for ${response.turn.points_scored}.`)
+    } else {
+      setBanner(null)
+    }
+  }
 
   const submitVisit = useMutation({
     mutationFn: (visitDarts: DartRequest[]) =>
@@ -73,65 +133,60 @@ export function LiveScoringPage() {
         method: 'POST',
         body: { player_id: activePlayer?.player_id, darts: visitDarts },
       }),
-    onSuccess: (response, visitDarts) => {
-      // For Halve It, compare against the cached state to spot a halving
-      const before = queryClient.getQueryData<MatchState>(['match', matchId])
-      const oldScore = before?.players.find(
-        (p) => p.player_id === response.turn.player_id,
-      )?.score
-      queryClient.setQueryData(['match', matchId], response.state)
-      const labels = visitDarts.map(dartLabel).join(' ')
-      setRecentTurns((prev) => [{ turn: response.turn, labels }, ...prev].slice(0, 5))
-      setDarts([])
-      setMultiplier('single')
-      if (response.state.game_type === 'halve_it' && !response.turn.is_checkout) {
-        const newScore = response.state.players.find(
-          (p) => p.player_id === response.turn.player_id,
-        )?.score
-        if (oldScore != null && newScore != null) {
-          setBanner(
-            newScore < oldScore
-              ? `Halved! ${oldScore} → ${newScore}`
-              : newScore > oldScore
-                ? `+${newScore - oldScore}`
-                : null,
-          )
-        }
-        return
-      }
-      if (response.turn.is_checkout) {
-        const game = response.state.game_type
-        const wonLeg =
-          game === 'cricket'
-            ? 'Board closed — leg won!'
-            : game === 'halve_it'
-              ? 'Game decided on points!'
-              : 'Leg won!'
-        const wonMatch =
-          game === 'cricket'
-            ? 'Board closed — match won!'
-            : game === 'halve_it'
-              ? 'Match decided on points!'
-              : 'Game shot — match won!'
-        setBanner(response.state.status === 'completed' ? wonMatch : wonLeg)
-      } else if (response.turn.is_bust) {
-        setBanner(`Bust! Score stays at ${response.turn.turn_start_score}.`)
-      } else {
-        setBanner(null)
-      }
-    },
+    onSuccess: (response, visitDarts) => applyVisit(response, visitDarts, 'You'),
     onError: (err) => {
       setDarts([])
       setBanner(err instanceof ApiError ? err.message : 'Something went wrong.')
     },
   })
 
+  const botVisit = useMutation({
+    mutationFn: () =>
+      api<BotVisitResponse>(`/api/v1/matches/${matchId}/bot-visit`, { method: 'POST' }),
+    onSuccess: (response) =>
+      applyVisit(response, response.darts, activePlayer?.display_name ?? 'Bot'),
+    onError: (err) => {
+      // NOT_BOT_TURN just means the board moved on; a refetch resyncs.
+      if (err instanceof ApiError && err.code === 'NOT_BOT_TURN') {
+        queryClient.invalidateQueries({ queryKey: ['match', matchId] })
+        return
+      }
+      setBanner(err instanceof ApiError ? err.message : 'Something went wrong.')
+    },
+  })
+
+  // Let the bot throw after a beat whenever it is up. The ref stops a
+  // second request while one is in flight (state updates re-run the
+  // effect before the mutation's pending flag flips).
+  const botRequestInFlight = useRef(false)
+  useEffect(() => {
+    if (!botIsUp || botRequestInFlight.current) return
+    const timer = setTimeout(() => {
+      botRequestInFlight.current = true
+      botVisit.mutate(undefined, {
+        onSettled: () => {
+          botRequestInFlight.current = false
+        },
+      })
+    }, BOT_THROW_DELAY_MS)
+    return () => clearTimeout(timer)
+    // botVisit is a stable mutation handle; only the board matters here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [botIsUp, state])
+
   const undoVisit = useMutation({
     mutationFn: () =>
       api<MatchState>(`/api/v1/matches/${matchId}/visits/latest`, { method: 'DELETE' }),
     onSuccess: (newState) => {
       queryClient.setQueryData(['match', matchId], newState)
-      setRecentTurns((prev) => prev.slice(1))
+      // Mirrors the server: undoing past a bot's reply removes the
+      // human visit before it as well.
+      setRecentTurns((prev) => {
+        const latestWasBot = newState.players.some(
+          (p) => p.player_id === prev[0]?.turn.player_id && p.bot_difficulty != null,
+        )
+        return prev.slice(latestWasBot ? 2 : 1)
+      })
       setDarts([])
       setBanner('Last visit undone.')
     },
@@ -140,7 +195,7 @@ export function LiveScoringPage() {
   })
 
   function addDart(rawDart: DartRequest) {
-    if (!activePlayer || submitVisit.isPending) return
+    if (!activePlayer || submitVisit.isPending || botIsUp) return
     // In Halve It, numbered singles carry the selected band.
     const dart: DartRequest =
       isHalveIt &&
@@ -211,6 +266,11 @@ export function LiveScoringPage() {
           >
             <p className="truncate text-lg font-medium">
               {player.display_name}
+              {player.bot_difficulty && (
+                <span className="ml-2 rounded bg-gray-700 px-1.5 py-0.5 align-middle text-xs uppercase text-gray-300">
+                  bot
+                </span>
+              )}
               {player.is_active_turn && !finished && ' 🎯'}
             </p>
             {isHalveIt ? (
@@ -274,6 +334,26 @@ export function LiveScoringPage() {
           >
             Back to dashboard
           </Link>
+        </div>
+      ) : botIsUp ? (
+        <div className="mx-auto max-w-3xl px-6 pb-10">
+          <p role="status" className="py-10 text-center text-xl text-gray-300">
+            {botVisit.isPending
+              ? `${activePlayer?.display_name} is throwing…`
+              : `${activePlayer?.display_name} is stepping up…`}
+          </p>
+          <div className="flex justify-center">
+            <button
+              onClick={() => undoVisit.mutate()}
+              disabled={undoVisit.isPending || botVisit.isPending}
+              className="rounded-lg bg-gray-700 px-3 py-2.5 text-sm hover:bg-gray-600 disabled:opacity-40"
+            >
+              Undo my last visit
+            </button>
+          </div>
+          {recentTurns.length > 0 && (
+            <RecentVisits turns={recentTurns} state={state} isCricket={isCricket} />
+          )}
         </div>
       ) : (
         <div className="mx-auto max-w-3xl px-6 pb-10">
@@ -370,41 +450,56 @@ export function LiveScoringPage() {
             </button>
           </div>
 
-          {/* Recent visits */}
           {recentTurns.length > 0 && (
-            <div className="mt-6">
-              <p className="mb-2 text-sm font-medium text-gray-400">Recent visits</p>
-              <ul className="space-y-1 text-sm">
-                {recentTurns.map(({ turn, labels }) => {
-                  const who = state.players.find((p) => p.player_id === turn.player_id)
-                  return (
-                    <li key={turn.id} className="flex justify-between rounded-lg bg-gray-800 px-3 py-2">
-                      <span>{who?.display_name}</span>
-                      <span className="font-mono">
-                        {isCricket ? (
-                          <>
-                            {labels}
-                            {turn.is_checkout && ' ◎ closed'}
-                          </>
-                        ) : (
-                          <>
-                            {turn.is_bust
-                              ? 'BUST'
-                              : turn.is_checkout
-                                ? `${turn.points_scored} ✓ out`
-                                : turn.points_scored}
-                            {'  '}({turn.turn_start_score} → {turn.turn_end_score})
-                          </>
-                        )}
-                      </span>
-                    </li>
-                  )
-                })}
-              </ul>
-            </div>
+            <RecentVisits turns={recentTurns} state={state} isCricket={isCricket} />
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+function RecentVisits({
+  turns,
+  state,
+  isCricket,
+}: {
+  turns: RecentVisit[]
+  state: MatchState
+  isCricket: boolean
+}) {
+  return (
+    <div className="mt-6">
+      <p className="mb-2 text-sm font-medium text-gray-400">Recent visits</p>
+      <ul className="space-y-1 text-sm">
+        {turns.map(({ turn, labels }) => {
+          const who = state.players.find((p) => p.player_id === turn.player_id)
+          return (
+            <li key={turn.id} className="flex justify-between rounded-lg bg-gray-800 px-3 py-2">
+              <span>{who?.display_name}</span>
+              <span className="font-mono">
+                {isCricket ? (
+                  <>
+                    {labels}
+                    {turn.is_checkout && ' ◎ closed'}
+                  </>
+                ) : (
+                  <>
+                    {labels}
+                    {'  '}
+                    {turn.is_bust
+                      ? 'BUST'
+                      : turn.is_checkout
+                        ? `${turn.points_scored} ✓ out`
+                        : turn.points_scored}
+                    {'  '}({turn.turn_start_score} → {turn.turn_end_score})
+                  </>
+                )}
+              </span>
+            </li>
+          )
+        })}
+      </ul>
     </div>
   )
 }

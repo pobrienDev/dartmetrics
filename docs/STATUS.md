@@ -3,7 +3,7 @@
 > Living document: where the project stands, key decisions, and what
 > comes next. Update at the end of significant work sessions.
 
-**Last updated:** 2026-08-26
+**Last updated:** 2026-09-08
 
 ## Where things stand
 
@@ -80,6 +80,20 @@ from the final thrower) and ties extend into Red Bull rounds; 501
 statistics are scoped to x01 matches. UI: game picker, Cricket marks
 grid, Halve It round/score display with inner-outer band toggle.
 Backend 182 tests, frontend 30 + 2 e2e.
+
+## Bot opponents (complete, 2026-09-08)
+
+Five shared bot players (noob/easy/medium/hard/pro) live in the
+players table with `bot_difficulty` set (migration `3c9d2b7e5a10`).
+`GET /api/v1/players/bots` creates them on first use; the human
+player list excludes them. The engine in app/scoring/bot.py is pure
+(aim + accuracy-driven throw, seeded RNG in tests) and covers all
+three game modes; `POST /matches/{id}/bot-visit` feeds its darts
+through the normal turn service. The scoring screen auto-triggers the
+bot after a 1.2 s pause and shows the darts it threw. Undo past a
+bot reply also removes the preceding human visit. Accuracy tables are
+tuned to ~32/47/63/81/100 three-dart averages when aiming T20.
+Backend 229 tests, frontend 32 + 2 e2e.
 
 ## Next up
 

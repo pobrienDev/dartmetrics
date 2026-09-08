@@ -27,4 +27,6 @@ class PlayerResponse(BaseModel):
     display_name: str
     nickname: str | None
     is_active: bool
+    # Set for computer opponents (noob, easy, medium, hard, pro).
+    bot_difficulty: str | None = None
     created_at: datetime

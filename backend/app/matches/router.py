@@ -11,6 +11,8 @@ from app.db import get_db
 from app.matches import service
 from app.matches.models import MatchStatus
 from app.matches.schemas import (
+    BotVisitResponse,
+    DartResponse,
     MatchCreateRequest,
     MatchListResponse,
     MatchStateResponse,
@@ -88,6 +90,32 @@ def record_visit(
     state = service.build_match_state(db, match)
     db.commit()
     return {"turn": turn, "state": state}
+
+
+@router.post(
+    "/{match_id}/bot-visit",
+    response_model=BotVisitResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def record_bot_visit(
+    match_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> BotVisitResponse:
+    """Have the bot whose turn it is throw its visit.
+
+    409 NOT_BOT_TURN when the active player is a human.
+    """
+    turn, match, darts = service.record_bot_visit(
+        db, user=current_user, match_id=match_id
+    )
+    state = service.build_match_state(db, match)
+    db.commit()
+    return {
+        "turn": turn,
+        "state": state,
+        "darts": [DartResponse.from_dart_input(dart) for dart in darts],
+    }
 
 
 @router.get("/{match_id}/summary")

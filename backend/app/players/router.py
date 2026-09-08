@@ -47,6 +47,17 @@ def list_players(
     return service.list_players(db, query=q, limit=limit)
 
 
+@router.get("/bots", response_model=list[PlayerResponse])
+def list_bots(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[PlayerResponse]:
+    """Computer opponents, easiest (noob) to hardest (pro)."""
+    bots = service.list_bots(db)
+    db.commit()
+    return bots
+
+
 @router.get("/{player_id}", response_model=PlayerResponse)
 def get_player(
     player_id: uuid.UUID,

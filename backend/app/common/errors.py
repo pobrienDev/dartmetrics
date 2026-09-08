@@ -90,3 +90,8 @@ class UndoNotAvailable(DomainError):
 
 class InvalidRequest(DomainError):
     code = "INVALID_REQUEST"
+
+
+class NotBotsTurn(DomainError):
+    code = "NOT_BOT_TURN"
+    http_status = 409
