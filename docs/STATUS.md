@@ -81,6 +81,13 @@ statistics are scoped to x01 matches. UI: game picker, Cricket marks
 grid, Halve It round/score display with inner-outer band toggle.
 Backend 182 tests, frontend 30 + 2 e2e.
 
+**2026-09-08:** Halve It now starts both players on 40 instead of 0
+(house rule: a missed opening round already halves something).
+`STARTING_SCORE` in app/scoring/halve_it.py is the single source;
+leg setup, undo replay and the state reader use it, and the game
+picker hint says "start on 40". Legs created before this keep their
+stored scores.
+
 ## Bot opponents (complete, 2026-09-08)
 
 Five shared bot players (noob/easy/medium/hard/pro) live in the
