@@ -5,7 +5,9 @@ Run locally with:
 """
 
 from fastapi import Depends, FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -16,6 +18,7 @@ from app.matches.router import router as matches_router
 from app.players.router import router as players_router
 from app.statistics.router import router as statistics_router
 from app.common.errors import DomainError
+from app.common.ratelimit import limiter
 from app.config import get_settings
 from app.db import get_db
 
@@ -27,6 +30,20 @@ def create_app() -> FastAPI:
         version="0.1.0",
         description="Darts 501 scoring and player analytics.",
     )
+
+    # Rate limiting: slowapi keeps counters in process memory, which is
+    # sufficient for a single API instance. Only the auth routes declare
+    # limits (see app/auth/router.py).
+    limiter.enabled = settings.rate_limit_enabled
+    app.state.limiter = limiter
+
+    if settings.cors_origin_list:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origin_list,
+            allow_methods=["GET", "POST", "PATCH", "DELETE"],
+            allow_headers=["Authorization", "Content-Type"],
+        )
 
     app.include_router(auth_router)
     app.include_router(me_router)
@@ -43,6 +60,21 @@ def create_app() -> FastAPI:
             status_code=exc.http_status,
             content={"error": {"code": exc.code, "message": str(exc)}},
             headers=headers,
+        )
+
+    @app.exception_handler(RateLimitExceeded)
+    def handle_rate_limit(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+        """Too many attempts from one client — same envelope shape as
+        every other error so the frontend needs no special case."""
+        return JSONResponse(
+            status_code=429,
+            content={
+                "error": {
+                    "code": "RATE_LIMITED",
+                    "message": "Too many attempts; please wait a minute and try again.",
+                }
+            },
+            headers={"Retry-After": "60"},
         )
 
     @app.exception_handler(IntegrityError)

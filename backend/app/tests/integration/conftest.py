@@ -111,7 +111,13 @@ def client(db_session):
         yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
+    # Every test registers and logs in from the same client address, so
+    # the auth rate limit would trip mid-suite. It is tested on its own in
+    # test_security_hardening.py.
+    app.state.limiter.enabled = False
+    app.state.limiter.reset()
     try:
         yield TestClient(app)
     finally:
         app.dependency_overrides.clear()
+        app.state.limiter.enabled = True

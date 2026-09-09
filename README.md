@@ -88,6 +88,36 @@ re-enter.
   states (a fourth dart, a bust that changes the score, a remaining score
   of 1) even if application code is bypassed.
 
+## Security notes
+
+- **Credential endpoints are rate limited** (`slowapi`, default 10
+  requests per minute per client IP for login and register, tunable via
+  `AUTH_RATE_LIMIT`). Argon2 verification is deliberately slow, so without
+  a limit those two routes are both a brute-force and a CPU-exhaustion
+  target. Over the limit returns `429 RATE_LIMITED` with `Retry-After`.
+  Counters live in process memory, which suits a single API instance;
+  a shared store would be needed to scale out.
+- **The placeholder `SECRET_KEY` is refused at startup**, as is any key
+  under 32 characters, so a copied `.env.example` cannot go to production
+  with forgeable tokens.
+- **CORS is off unless `CORS_ORIGINS` is set.** The dev proxy and a
+  single-host deployment are same-origin and need nothing; a split
+  frontend/API deployment lists its frontend origin there.
+- **Match state and summaries are private** to the creator and the
+  players in the match, the same rule that governs recording visits.
+  Other signed-in users get `403 MATCH_ACCESS_DENIED`.
+- **The access token is kept in `localStorage`.** That makes it readable
+  by any script injected into the page. React escapes all rendered
+  values and the app never renders raw HTML, and the token expires after
+  60 minutes. Moving to an HttpOnly cookie is planned for V1 alongside
+  refresh tokens, since it also needs CSRF protection.
+- **The OpenAPI docs (`/docs`) are public on purpose** — the API surface
+  is documented, not secret, and every route needs a valid token.
+- **Behind a reverse proxy**, run uvicorn with `--proxy-headers` and
+  `--forwarded-allow-ips` so the rate limiter sees real client
+  addresses. TLS termination and security headers (HSTS etc.) belong to
+  that proxy layer.
+
 ## Local development
 
 Requirements: Python 3.12+, Docker Desktop.

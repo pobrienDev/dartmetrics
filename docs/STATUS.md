@@ -3,7 +3,7 @@
 > Living document: where the project stands, key decisions, and what
 > comes next. Update at the end of significant work sessions.
 
-**Last updated:** 2026-09-08
+**Last updated:** 2026-09-09
 
 ## Where things stand
 
@@ -102,10 +102,22 @@ bot reply also removes the preceding human visit. Accuracy tables are
 tuned to ~32/47/63/81/100 three-dart averages when aiming T20.
 Backend 229 tests, frontend 32 + 2 e2e.
 
+## Security hardening (complete, 2026-09-09)
+
+Reviewed auth, config, access rules, error handling, and the API
+client. Added: slowapi rate limit on login/register (10/min per IP,
+`AUTH_RATE_LIMIT`, 429 `RATE_LIMITED` envelope); startup refusal of
+the placeholder or a short `SECRET_KEY`; opt-in CORS allowlist
+(`CORS_ORIGINS`, off by default because the app is same-origin);
+match state/summary reads restricted to creator + participants
+(previously any signed-in user could read any match by UUID). Accepted
+tradeoffs are written up in the README "Security notes" section
+(localStorage token, public /docs, proxy headers at deploy time).
+Tests disable the limiter in the shared client fixture and re-enable
+it in test_security_hardening.py.
+
 ## Next up
 
-1. Security checklist review + production config (CORS allowlist,
-   secure cookie/token settings, rate limiting decision) — pairs with:
 3. Phase 9 deployment: backend Dockerfile, managed PostgreSQL,
    public frontend + backend hosting, migrations in the deploy flow.
 4. Phase 10 portfolio polish: README hero/screenshots, architecture

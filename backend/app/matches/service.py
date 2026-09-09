@@ -236,9 +236,11 @@ def _halve_it_leg_winner(
     return thrower_id if my_score > other_score else other_id
 
 
-def _ensure_can_score(session: Session, user: User, match: Match) -> None:
-    """Only the match creator or a participant may record visits
-    (dev plan authorization matrix). Guests are scored by the creator."""
+def ensure_match_access(session: Session, user: User, match: Match) -> None:
+    """Only the match creator or a participant may read or act on a
+    match (dev plan authorization matrix). Guests are scored by the
+    creator. Applies to reads too: match state and summaries are
+    private to the people in the match."""
     if user.id == match.created_by_user_id:
         return
     own_player = session.scalar(
@@ -249,6 +251,13 @@ def _ensure_can_score(session: Session, user: User, match: Match) -> None:
     )
     if own_player is None:
         raise MatchAccessDenied("You are not a participant in this match.")
+
+
+def get_match_for_user(session: Session, user: User, match_id: uuid.UUID) -> Match:
+    """Load a match the user is allowed to see (404 unknown, 403 other people's)."""
+    match = get_match(session, match_id)
+    ensure_match_access(session, user, match)
+    return match
 
 
 def record_match_visit(
@@ -262,7 +271,7 @@ def record_match_visit(
     visit wins a leg mid-match, start the next leg with the alternated
     starter (Phase 0 spec 17.1)."""
     match = get_match(session, match_id)
-    _ensure_can_score(session, user, match)
+    ensure_match_access(session, user, match)
 
     if match.status is not MatchStatus.IN_PROGRESS:
         raise MatchNotActive(f"Match is {match.status}; scoring is not allowed.")
@@ -311,7 +320,7 @@ def record_bot_visit(
     bot's throw.
     """
     match = get_match(session, match_id)
-    _ensure_can_score(session, user, match)
+    ensure_match_access(session, user, match)
     if match.status is not MatchStatus.IN_PROGRESS:
         raise MatchNotActive(f"Match is {match.status}; scoring is not allowed.")
 
@@ -355,7 +364,7 @@ def abandon_match(session: Session, user: User, match_id: uuid.UUID) -> Match:
     leg keeps its in-progress rows untouched for audit; the cancelled
     match status is what blocks any further scoring."""
     match = get_match(session, match_id)
-    _ensure_can_score(session, user, match)
+    ensure_match_access(session, user, match)
 
     if match.status is not MatchStatus.IN_PROGRESS:
         raise MatchNotActive(f"Match is {match.status}; only an in-progress match can be abandoned.")
@@ -377,7 +386,7 @@ def undo_latest_visit(session: Session, user: User, match_id: uuid.UUID) -> Matc
     re-enter rather than watching the bot simply throw again.
     """
     match = get_match(session, match_id)
-    _ensure_can_score(session, user, match)
+    ensure_match_access(session, user, match)
 
     if match.status is not MatchStatus.IN_PROGRESS:
         raise MatchNotActive(f"Match is {match.status}; undo is not allowed.")

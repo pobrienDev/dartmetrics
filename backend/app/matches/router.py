@@ -67,8 +67,8 @@ def get_match(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> MatchStateResponse:
-    """Current authoritative state of a match."""
-    match = service.get_match(db, match_id)
+    """Current authoritative state of a match (creator or participants only)."""
+    match = service.get_match_for_user(db, current_user, match_id)
     return service.build_match_state(db, match)
 
 
@@ -124,10 +124,12 @@ def get_match_summary(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Per-player performance summary for one match (live or final)."""
+    """Per-player performance summary for one match (live or final);
+    creator or participants only."""
     from app.statistics.schemas import MatchSummaryResponse
     from app.statistics.service import match_summary
 
+    service.get_match_for_user(db, current_user, match_id)
     return MatchSummaryResponse(**match_summary(db, match_id))
 
 

@@ -270,6 +270,35 @@ def test_non_participant_cannot_score(client, setup):
     assert response.json()["error"]["code"] == "MATCH_ACCESS_DENIED"
 
 
+def test_non_participant_cannot_read_match_or_summary(client, setup):
+    """Match state and summaries are private to the creator and the
+    players in the match, matching the write-side authorization."""
+    match = make_match(client, setup)
+    outsider_headers = signup(client, "outsider@example.com", "Outsider")
+
+    for path in (f"/api/v1/matches/{match['id']}", f"/api/v1/matches/{match['id']}/summary"):
+        response = client.get(path, headers=outsider_headers)
+        assert response.status_code == 403, path
+        assert response.json()["error"]["code"] == "MATCH_ACCESS_DENIED"
+
+    # The creator still can
+    assert client.get(f"/api/v1/matches/{match['id']}", headers=setup["headers"]).status_code == 200
+    assert client.get(f"/api/v1/matches/{match['id']}/summary", headers=setup["headers"]).status_code == 200
+
+
+def test_participant_can_read_match_they_did_not_create(client, setup):
+    opp_headers = signup(client, "opponent@example.com", "Opponent")
+    opp_player = client.post(
+        "/api/v1/players", json={"display_name": "Opponent"}, headers=opp_headers
+    ).json()
+    match = client.post(
+        "/api/v1/matches",
+        json={"opponent_player_id": opp_player["id"], "best_of_legs": 1},
+        headers=setup["headers"],
+    ).json()
+    assert client.get(f"/api/v1/matches/{match['id']}", headers=opp_headers).status_code == 200
+
+
 def test_impossible_dart_is_422(client, setup):
     match = make_match(client, setup)
     visit(

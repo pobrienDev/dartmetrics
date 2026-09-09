@@ -1,6 +1,6 @@
 """Auth HTTP routes (dev plan: routes layer — HTTP concerns only)."""
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.orm import Session
 
 from app.auth import service
@@ -12,7 +12,9 @@ from app.auth.schemas import (
     TokenResponse,
     UserResponse,
 )
+from app.common.ratelimit import limiter
 from app.common.security import create_access_token
+from app.config import get_settings
 from app.db import get_db
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -27,8 +29,15 @@ def me(current_user: User = Depends(get_current_user)) -> UserResponse:
     return current_user
 
 
+# slowapi needs the Request in the signature to identify the client.
+_AUTH_LIMIT = get_settings().auth_rate_limit
+
+
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def register(body: RegisterRequest, db: Session = Depends(get_db)) -> UserResponse:
+@limiter.limit(_AUTH_LIMIT)
+def register(
+    request: Request, body: RegisterRequest, db: Session = Depends(get_db)
+) -> UserResponse:
     """Create a new user account."""
     user = service.register_user(
         db, email=body.email, password=body.password, display_name=body.display_name
@@ -38,7 +47,10 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)) -> UserRespon
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(body: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
+@limiter.limit(_AUTH_LIMIT)
+def login(
+    request: Request, body: LoginRequest, db: Session = Depends(get_db)
+) -> TokenResponse:
     """Exchange valid credentials for a bearer access token."""
     user = service.authenticate_user(db, email=body.email, password=body.password)
     return TokenResponse(access_token=create_access_token(user.id))
