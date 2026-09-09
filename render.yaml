@@ -1,0 +1,42 @@
+# Render Blueprint: one Docker web service on Render's free tier.
+# https://render.com/docs/blueprint-spec
+#
+# The database is a free Neon PostgreSQL project (https://neon.tech),
+# not a Render database: Render's free databases are deleted 30 days
+# after creation, while Neon's free tier has no expiry (0.5 GB storage,
+# 100 compute-hours a month, scales to zero when idle).
+#
+# Deploy: Render dashboard -> New -> Blueprint -> pick this repository.
+# Render prompts for DATABASE_URL (paste the Neon connection string),
+# generates SECRET_KEY, builds the Dockerfile, and the container applies
+# migrations on start.
+#
+# Free web services sleep after 15 idle minutes; the first request
+# afterwards takes about a minute.
+
+services:
+  - type: web
+    name: dartmetrics
+    runtime: docker
+    plan: free
+    region: ohio  # same region as the Neon database (AWS us-east-2)
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+    envVars:
+      # Neon connection string, e.g.
+      # postgresql://user:pass@ep-xxx.region.aws.neon.tech/dartmetrics?sslmode=require
+      # sync: false makes Render ask for the value instead of storing it here.
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "60"
+      - key: AUTH_RATE_LIMIT
+        value: "10/minute"
+      # Same-origin deployment: the container serves the frontend, so
+      # no CORS allowlist is needed. Set this only for a split frontend.
+      - key: CORS_ORIGINS
+        value: ""

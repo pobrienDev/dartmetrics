@@ -134,3 +134,38 @@ jobs:
       - name: Run end-to-end tests
         working-directory: frontend
         run: npx playwright test
+
+  docker-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      # Build only (no push): proves the multi-stage image still builds,
+      # including the frontend production bundle inside it.
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          load: true
+          tags: dartmetrics:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test the image
+        run: |
+          docker run -d --name smoke -p 8000:8000 \
+            -e RUN_MIGRATIONS=0 \
+            -e DATABASE_URL=postgres://user:pass@localhost:5432/unused \
+            -e SECRET_KEY=ci-only-test-signing-key-not-a-secret \
+            dartmetrics:ci
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8000/api/v1/health && break
+            sleep 1
+          done
+          curl -sf http://localhost:8000/api/v1/health
+          curl -sf http://localhost:8000/ | grep -q '<div id="root">'
+          docker logs smoke
+          docker rm -f smoke

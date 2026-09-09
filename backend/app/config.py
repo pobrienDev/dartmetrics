@@ -15,6 +15,21 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+def normalize_database_url(url: str) -> str:
+    """Pin the psycopg (v3) driver onto a plain PostgreSQL URL.
+
+    Managed databases (Render, Heroku-style) hand out
+    ``postgres://`` or ``postgresql://`` connection strings. SQLAlchemy
+    treats a bare ``postgresql://`` as psycopg2, which is not installed,
+    and rejects ``postgres://`` outright. Any URL that already names a
+    driver is left alone.
+    """
+    for prefix in ("postgres://", "postgresql://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix):]
+    return url
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=REPO_ROOT / ".env",
@@ -39,6 +54,17 @@ class Settings(BaseSettings):
     auth_rate_limit: str = "10/minute"
     rate_limit_enabled: bool = True
 
+    # Directory holding the production frontend build (Vite's dist/).
+    # When set and present, the API also serves the single-page app, so
+    # one container answers both / and /api. Empty in development, where
+    # the Vite dev server serves the app and proxies /api here.
+    static_dir: str = ""
+
+    @field_validator("database_url")
+    @classmethod
+    def database_url_names_driver(cls, value: str) -> str:
+        return normalize_database_url(value)
+
     @field_validator("secret_key")
     @classmethod
     def secret_key_must_be_real(cls, value: str) -> str:
@@ -55,6 +81,14 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def static_path(self) -> Path | None:
+        """The frontend build directory, or None when not serving one."""
+        if not self.static_dir:
+            return None
+        path = Path(self.static_dir)
+        return path if (path / "index.html").is_file() else None
 
 
 @lru_cache

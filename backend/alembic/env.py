@@ -15,6 +15,7 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BACKEND_DIR))
 load_dotenv(BACKEND_DIR.parent / ".env")
 
+from app.config import normalize_database_url  # noqa: E402
 from app.db import Base  # noqa: E402
 # Import every model module so its tables register on Base.metadata;
 # autogenerate only sees tables that have been imported.
@@ -29,7 +30,11 @@ config = context.config
 database_url = os.environ.get("DATABASE_URL")
 if not database_url:
     raise RuntimeError("DATABASE_URL is not set; copy .env.example to .env first.")
-config.set_main_option("sqlalchemy.url", database_url)
+# Alembic's config is a ConfigParser, which treats % as interpolation:
+# escape it so URL-encoded passwords or query strings survive intact.
+config.set_main_option(
+    "sqlalchemy.url", normalize_database_url(database_url).replace("%", "%%")
+)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

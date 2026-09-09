@@ -4,9 +4,12 @@ Run locally with:
     uvicorn app.main:app --reload
 """
 
-from fastapi import Depends, FastAPI, Request
+from pathlib import Path
+
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -109,7 +112,48 @@ def create_app() -> FastAPI:
             )
         return JSONResponse(status_code=200, content={"status": "ready"})
 
+    # Production only: the container also serves the React build, so one
+    # origin answers both the app and the API. Registered last so every
+    # API route above wins over the catch-all.
+    if settings.static_path is not None:
+        _mount_frontend(app, settings.static_path)
+
     return app
+
+
+class _ImmutableStaticFiles(StaticFiles):
+    """Vite names bundled files by content hash, so they can be cached
+    forever: a new deploy references new names from a fresh index.html."""
+
+    def file_response(self, *args, **kwargs):  # type: ignore[override]
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
+
+def _mount_frontend(app: FastAPI, static_path: Path) -> None:
+    """Serve the single-page app from Vite's dist/ directory.
+
+    Hashed bundles live under /assets. Any other non-API path returns
+    index.html so React Router owns the URL — /matches/<id> must load on
+    a refresh or a shared link. index.html itself is never cached, so
+    browsers pick up a new deploy on the next navigation.
+    """
+    static_root = static_path.resolve()
+    index_html = static_root / "index.html"
+    assets = static_root / "assets"
+    if assets.is_dir():
+        app.mount("/assets", _ImmutableStaticFiles(directory=assets), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def spa(full_path: str) -> FileResponse:
+        if full_path == "api" or full_path.startswith("api/"):
+            # An unknown API path is a 404, never the app shell.
+            raise HTTPException(status_code=404, detail="Not found")
+        candidate = (static_root / full_path).resolve()
+        if full_path and candidate.is_file() and candidate.is_relative_to(static_root):
+            return FileResponse(candidate)  # favicon.svg and other top-level files
+        return FileResponse(index_html, headers={"Cache-Control": "no-cache"})
 
 
 app = create_app()

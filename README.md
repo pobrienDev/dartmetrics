@@ -144,6 +144,58 @@ python -m venv .venv
 
 Integration tests skip automatically if PostgreSQL is not running.
 
+## Deployment
+
+The app ships as **one container**: a multi-stage `Dockerfile` builds the
+React app with Node, then installs the backend on `python:3.12-slim` and
+copies the build into the image. FastAPI serves the bundle (`STATIC_DIR`)
+next to the API, so the deployed site is same-origin and needs no CORS.
+The container runs as a non-root user.
+
+On start, `docker-entrypoint.sh` applies Alembic migrations
+(`alembic upgrade head`, a no-op when the schema is current) and then
+starts uvicorn on `$PORT` (default 8000) with proxy headers trusted, so
+the auth rate limiter sees real client addresses behind the platform's
+load balancer. Set `RUN_MIGRATIONS=0` if the host runs migrations in its
+own pre-deploy step.
+
+`DATABASE_URL` accepts the `postgres://` and `postgresql://` forms that
+managed databases hand out; the app pins the psycopg driver itself.
+
+### Render + Neon (free)
+
+The app runs on Render's free web service with the database on Neon's
+free PostgreSQL tier. Render's own free databases are deleted after 30
+days; Neon's free tier (0.5 GB, 100 compute-hours a month, scales to
+zero when idle) has no expiry, so the site can sit idle indefinitely.
+
+1. **Neon:** create a project at https://neon.tech and copy its
+   connection string (it looks like
+   `postgresql://user:pass@ep-xxx.region.aws.neon.tech/neondb?sslmode=require`).
+2. **Render:** **New → Blueprint** in the dashboard, pick this
+   repository. `render.yaml` describes the Docker web service; Render
+   prompts for `DATABASE_URL` (paste the Neon string), generates a
+   `SECRET_KEY`, and health-checks `/api/v1/health`.
+3. The first deploy builds the image and the container applies the
+   migrations against Neon on start. Every push to `main` redeploys.
+
+Free web services sleep after 15 idle minutes; the first request
+afterwards takes about a minute while the container starts. Neon
+wakes in a second or two.
+
+### Running the image locally
+
+```
+docker build -t dartmetrics .
+docker run --rm -p 8000:8000 \
+  -e DATABASE_URL=postgres://dartmetrics:dartmetrics_dev@host.docker.internal:5432/dartmetrics \
+  -e SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))") \
+  dartmetrics
+```
+
+Then open http://localhost:8000. This uses the PostgreSQL started by
+`docker compose up -d`.
+
 ## Project layout
 
 ```
@@ -156,5 +208,9 @@ backend/
     common/       domain error types
     tests/        unit and integration suites
   alembic/        database migrations
+frontend/         React + TypeScript app (Vite); dist/ is served by the API in production
+Dockerfile          production image: frontend build + backend, migrations on start
+docker-entrypoint.sh
+render.yaml         Render Blueprint (web service + PostgreSQL)
 docker-compose.yml  local PostgreSQL
 ```

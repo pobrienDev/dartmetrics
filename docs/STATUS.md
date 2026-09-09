@@ -3,7 +3,7 @@
 > Living document: where the project stands, key decisions, and what
 > comes next. Update at the end of significant work sessions.
 
-**Last updated:** 2026-09-09
+**Last updated:** 2026-09-09 (Phase 9 deployment)
 
 ## Where things stand
 
@@ -116,10 +116,44 @@ tradeoffs are written up in the README "Security notes" section
 Tests disable the limiter in the shared client fixture and re-enable
 it in test_security_hardening.py.
 
+## Phase 9 deployment (in progress, 2026-09-09)
+
+Decisions: host on **Render's free web service** via a Blueprint
+(`render.yaml`), with the database on **Neon's free PostgreSQL** rather
+than a Render database (Render's free databases are deleted after 30
+days; Neon's free tier has no expiry and scales to zero). Serve the
+frontend **from the API container** so production stays same-origin
+(no CORS, one deploy). Options compared on 2026-09-09: Koyeb + Neon is
+the free fallback if Render's cold starts annoy; Hetzner VPS (~€4/mo,
+docker compose) is the paid upgrade path and the Dockerfile carries
+over unchanged. Done so far:
+
+- Multi-stage `Dockerfile` (Node builds Vite dist → python:3.12-slim
+  image, non-root user) and `.dockerignore`.
+- `docker-entrypoint.sh` runs `alembic upgrade head` then uvicorn on
+  `$PORT` with `--proxy-headers --forwarded-allow-ips '*'`
+  (`RUN_MIGRATIONS=0` opts out). Migrations live in the entrypoint
+  rather than Render's `preDeployCommand` because that hook is not
+  available on free instances.
+- `STATIC_DIR` setting: FastAPI mounts `/assets` with immutable cache
+  headers and serves `index.html` (no-cache) for every non-API path so
+  React Router deep links survive refresh; `/api/*` unknowns stay 404.
+- `DATABASE_URL` normalisation: `postgres://` / `postgresql://` become
+  `postgresql+psycopg://` (managed databases hand out the bare form);
+  query strings such as Neon's `?sslmode=require` pass through. Alembic's
+  env.py uses the same helper and escapes `%` for ConfigParser.
+- CI gained a `docker-build` job so the image cannot silently break.
+- Verified locally: image built, ran against the compose database with
+  a `postgres://` URL, migrations applied, register/login/dashboard
+  worked in the browser through the container. Backend 248 tests.
+
+Remaining (needs the owner's accounts, no card required): create a
+Neon project, then a Render Blueprint from this repo pasting the Neon
+connection string as `DATABASE_URL`; confirm the first deploy; record
+the public URL here and in the README.
+
 ## Next up
 
-3. Phase 9 deployment: backend Dockerfile, managed PostgreSQL,
-   public frontend + backend hosting, migrations in the deploy flow.
 4. Phase 10 portfolio polish: README hero/screenshots, architecture
    diagram, seed/demo data, release tag v0.1.0.
 5. Later (V1): refresh tokens + revocation, Elo, 301, leagues,
