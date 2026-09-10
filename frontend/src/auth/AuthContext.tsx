@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 
-import { api, clearToken, getToken, setToken } from '../api/client'
+import { api, clearToken, getToken, SESSION_EXPIRED_EVENT, setToken } from '../api/client'
 import type { TokenResponse, UserResponse } from '../api/types'
 import { AuthContext } from './useAuth'
 
@@ -20,6 +20,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then(setUser)
       .catch(() => clearToken()) // expired/invalid token: start signed out
       .finally(() => setLoading(false))
+  }, [])
+
+  // A 401 anywhere in the app (typically an expired token mid-match)
+  // signs the user out; ProtectedRoute then redirects to login with the
+  // current page remembered.
+  useEffect(() => {
+    const signOut = () => setUser(null)
+    window.addEventListener(SESSION_EXPIRED_EVENT, signOut)
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, signOut)
   }, [])
 
   const login = useCallback(async (email: string, password: string) => {

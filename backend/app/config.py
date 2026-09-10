@@ -39,7 +39,10 @@ class Settings(BaseSettings):
 
     database_url: str
     secret_key: str  # signs JWTs; generate with secrets.token_urlsafe(32)
-    access_token_expire_minutes: int = 60
+    # Eight hours covers an evening of matches. A token that dies
+    # mid-match costs the visit in flight and a trip through login, so
+    # the lifetime is sized to a session, not a request; see README.
+    access_token_expire_minutes: int = 480
     app_name: str = "DartMetrics"
 
     # Browser origins allowed to call the API cross-origin, comma-separated

@@ -1,11 +1,16 @@
 // Typed fetch wrapper for the DartMetrics API.
 //
 // The bearer token lives in localStorage so a page refresh keeps the
-// session (tokens expire server-side after 60 minutes regardless).
+// session. Tokens expire server-side (ACCESS_TOKEN_EXPIRE_MINUTES); when
+// any request comes back 401 the token is dropped and a
+// SESSION_EXPIRED_EVENT is dispatched so the auth context can sign the
+// user out and the router can bounce them to login, which sends them
+// back to the page they were on afterwards.
 
 import type { ApiErrorBody } from './types'
 
 const TOKEN_KEY = 'dartmetrics_token'
+export const SESSION_EXPIRED_EVENT = 'dartmetrics:session-expired'
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY)
@@ -61,6 +66,13 @@ export async function api<T>(
       }
     } catch {
       /* non-JSON body; keep defaults */
+    }
+    if (response.status === 401 && getToken() !== null) {
+      // The stored token no longer works (expired, or the account was
+      // deactivated). Sign out app-wide rather than surfacing the raw
+      // error on whatever screen made the request.
+      clearToken()
+      window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT))
     }
     throw new ApiError(response.status, code, message)
   }

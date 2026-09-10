@@ -124,6 +124,18 @@ scatter-model estimate of ~45% / ~35% for their averages. Lowered to
 medians now noob 9, easy 25 (easy ends on or below 40 in 67% of
 games); medium and up untouched; T20 averages unchanged.
 
+**2026-09-10 session expiry bug:** a Halve It match ran past the
+60-minute token lifetime; the next visit failed with a raw "Invalid
+or expired token." banner on the scoring screen and nothing signed
+the user out. Fixed: the API client drops the token on any 401 while
+signed in and dispatches `SESSION_EXPIRED_EVENT`; AuthContext signs
+out; ProtectedRoute redirects to login with the current path in
+router state; LoginPage explains and returns there after sign-in.
+Token lifetime default raised 60 → 480 minutes (an evening of
+matches), in config.py, .env.example, render.yaml and the README.
+Also fixed: Halve It rows in the scoring page's Recent visits showed
+x01-style "0 (0 → 0)"; they now show "+N" or "HALVED".
+
 ## Security hardening (complete, 2026-09-09)
 
 Reviewed auth, config, access rules, error handling, and the API

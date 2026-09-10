@@ -33,7 +33,7 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
-        value: "60"
+        value: "480"
       - key: AUTH_RATE_LIMIT
         value: "10/minute"
       # Same-origin deployment: the container serves the frontend, so

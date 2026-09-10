@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { api, ApiError, clearToken, setToken } from './client'
+import { api, ApiError, clearToken, getToken, SESSION_EXPIRED_EVENT, setToken } from './client'
 
 function mockFetch(status: number, body: unknown) {
   const response = {
@@ -51,6 +51,29 @@ describe('api client', () => {
       message: 'Taken.',
     })
     await expect(failure).rejects.toBeInstanceOf(ApiError)
+  })
+
+  it('drops a rejected token and announces the expired session', async () => {
+    setToken('stale-token')
+    mockFetch(401, { error: { code: 'NOT_AUTHENTICATED', message: 'Invalid or expired token.' } })
+    const expired = vi.fn()
+    window.addEventListener(SESSION_EXPIRED_EVENT, expired)
+
+    await expect(api('/api/v1/matches/m1/visits', { method: 'POST', body: {} })).rejects.toMatchObject({
+      status: 401,
+    })
+    expect(getToken()).toBeNull()
+    expect(expired).toHaveBeenCalledTimes(1)
+    window.removeEventListener(SESSION_EXPIRED_EVENT, expired)
+  })
+
+  it('does not announce expiry for a 401 while signed out (a failed login)', async () => {
+    mockFetch(401, { error: { code: 'INVALID_CREDENTIALS', message: 'Incorrect email or password.' } })
+    const expired = vi.fn()
+    window.addEventListener(SESSION_EXPIRED_EVENT, expired)
+    await expect(api('/api/v1/auth/login', { method: 'POST', body: {} })).rejects.toBeInstanceOf(ApiError)
+    expect(expired).not.toHaveBeenCalled()
+    window.removeEventListener(SESSION_EXPIRED_EVENT, expired)
   })
 
   it('maps FastAPI 422 validation bodies to VALIDATION_ERROR', async () => {

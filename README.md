@@ -73,15 +73,21 @@ re-enter.
 
 - Passwords are hashed with **Argon2id** (via pwdlib); plaintext never
   touches the database.
-- Login issues a **stateless JWT access token** (HS256, 60-minute
-  lifetime) sent as an `Authorization: Bearer` header.
+- Login issues a **stateless JWT access token** (HS256, 8-hour
+  lifetime, `ACCESS_TOKEN_EXPIRE_MINUTES`) sent as an
+  `Authorization: Bearer` header. Eight hours covers an evening of
+  matches; the original 60 minutes expired mid-game.
 - **Logout is client-side**: discard the token. There is deliberately no
   server-side logout endpoint — stateless tokens cannot be individually
-  revoked without a denylist, and with a 60-minute lifetime the added
+  revoked without a denylist, and with a bounded lifetime the added
   infrastructure isn't justified for the MVP. Server-side revocation is
   planned for V1 together with refresh tokens.
 - Deactivating a user takes effect immediately regardless of token
   lifetime, because every authenticated request re-checks `is_active`.
+- **When a token stops working mid-session** (expiry or deactivation),
+  the first 401 clears it, the app signs out, and the login page
+  returns the user to the page they were on afterwards, so a match in
+  progress can be resumed.
 
 ### Design principles
 
@@ -116,7 +122,7 @@ re-enter.
 - **The access token is kept in `localStorage`.** That makes it readable
   by any script injected into the page. React escapes all rendered
   values and the app never renders raw HTML, and the token expires after
-  60 minutes. Moving to an HttpOnly cookie is planned for V1 alongside
+  8 hours. Moving to an HttpOnly cookie is planned for V1 alongside
   refresh tokens, since it also needs CSRF protection.
 - **The OpenAPI docs (`/docs`) are public on purpose** — the API surface
   is documented, not secret, and every route needs a valid token.

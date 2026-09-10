@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/useAuth'
@@ -8,6 +8,11 @@ import { AuthLayout } from '../components/AuthLayout'
 export function LoginPage() {
   const { login } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  // Set by ProtectedRoute when a signed-out visitor (or an expired
+  // session) lands here from somewhere specific.
+  const from = (location.state as { from?: string } | null)?.from
+  const returnTo = from && from !== '/' ? from : null
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -19,7 +24,7 @@ export function LoginPage() {
     setSubmitting(true)
     try {
       await login(email, password)
-      navigate('/')
+      navigate(returnTo ?? '/', { replace: true })
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Something went wrong.')
     } finally {
@@ -28,7 +33,10 @@ export function LoginPage() {
   }
 
   return (
-    <AuthLayout title="Welcome back" subtitle="Sign in to your account">
+    <AuthLayout
+      title="Welcome back"
+      subtitle={returnTo ? 'Your session ended. Sign in to pick up where you left off.' : 'Sign in to your account'}
+    >
       <form onSubmit={handleSubmit} className="space-y-4">
         <label className="block">
           <span className="label">Email</span>

@@ -581,13 +581,16 @@ function RecentVisits({
   state: MatchState
   isCricket: boolean
 }) {
+  const isHalveIt = state.game_type === 'halve_it'
   return (
     <div className="mt-6">
       <p className="label">Recent visits</p>
       <ul className="space-y-1 text-sm">
         {turns.map(({ turn, labels }) => {
           const who = state.players.find((p) => p.player_id === turn.player_id)
-          const tone = turn.is_bust
+          // Halve It: a round either adds its qualifying points or halves.
+          const halved = isHalveIt && turn.points_scored === 0 && !turn.is_checkout
+          const tone = turn.is_bust || halved
             ? 'text-bust-400'
             : turn.is_checkout
               ? 'text-felt-300'
@@ -602,6 +605,12 @@ function RecentVisits({
                   <>
                     {labels}
                     {turn.is_checkout && ' ◎ closed'}
+                  </>
+                ) : isHalveIt ? (
+                  <>
+                    {labels}
+                    {'  '}
+                    {halved ? 'HALVED' : `+${turn.points_scored}`}
                   </>
                 ) : (
                   <>
