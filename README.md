@@ -6,8 +6,13 @@ Records 501 matches at per-dart granularity and derives player statistics
 (three-dart average, checkout percentage, 180 counts, head-to-head) from
 raw throw data.
 
-**Status:** Phase 0 complete — scoring rules, domain engine, core entities,
-PostgreSQL schema, and test suite.
+**Live demo:** https://dartmetrics.onrender.com (free tier: the first
+request after 15 idle minutes takes about a minute while the container
+starts).
+
+**Status:** playable end to end — 501, Cricket, and Halve It with bot
+opponents, per-dart history, and career statistics. Deployed on Render
+with the database on Neon.
 
 ## Stack
 
@@ -164,7 +169,7 @@ managed databases hand out; the app pins the psycopg driver itself.
 
 ### Render + Neon (free)
 
-The app runs on Render's free web service with the database on Neon's
+The live site, https://dartmetrics.onrender.com, runs on Render's free web service with the database on Neon's
 free PostgreSQL tier. Render's own free databases are deleted after 30
 days; Neon's free tier (0.5 GB, 100 compute-hours a month, scales to
 zero when idle) has no expiry, so the site can sit idle indefinitely.

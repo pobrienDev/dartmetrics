@@ -7,9 +7,10 @@
 
 ## Where things stand
 
-Phases 0-8 of the development plan are substantially complete. The app
-is fully playable end to end: register → create match → live per-dart
-scoring → winner screen → history → career statistics.
+Phases 0-9 of the development plan are complete. The app is fully
+playable end to end and live at https://dartmetrics.onrender.com:
+register → create match → live per-dart scoring → winner screen →
+history → career statistics.
 
 - **Backend** (FastAPI + SQLAlchemy + PostgreSQL): pure 501 scoring
   engine, per-dart schema (7 tables, Alembic migration `a838f4f2385a`),
@@ -116,7 +117,7 @@ tradeoffs are written up in the README "Security notes" section
 Tests disable the limiter in the shared client fixture and re-enable
 it in test_security_hardening.py.
 
-## Phase 9 deployment (in progress, 2026-09-09)
+## Phase 9 deployment (complete, 2026-09-09)
 
 Decisions: host on **Render's free web service** via a Blueprint
 (`render.yaml`), with the database on **Neon's free PostgreSQL** rather
@@ -147,10 +148,14 @@ over unchanged. Done so far:
   a `postgres://` URL, migrations applied, register/login/dashboard
   worked in the browser through the container. Backend 248 tests.
 
-Remaining (needs the owner's accounts, no card required): create a
-Neon project, then a Render Blueprint from this repo pasting the Neon
-connection string as `DATABASE_URL`; confirm the first deploy; record
-the public URL here and in the README.
+**Live: https://dartmetrics.onrender.com** (Render web service
+`dartmetrics`, Ohio, deployed from the `dartmetrics` Blueprint; Neon
+project `dartmetrics`, AWS us-east-2, Postgres 16, direct connection
+string as `DATABASE_URL`). First deploy from commit `2750367`: schema
+migrated, health/ready green, SPA deep links and asset caching verified
+through the public URL. Every push to `main` redeploys via the Blueprint
+sync. Housekeeping: rotate the Neon password (it was shared in chat
+during setup) and update Render's `DATABASE_URL` afterwards.
 
 ## Next up
 
