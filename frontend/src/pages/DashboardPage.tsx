@@ -127,11 +127,9 @@ export function DashboardPage() {
           ))}
         </div>
 
-        <div className="mt-8 flex flex-wrap gap-3">
-          <Link to="/matches/new" className="btn-primary px-5 py-3">
-            + New Match
-          </Link>
-          <Link to="/matches" className="btn-secondary px-5 py-3">
+        {/* The header nav carries this link from tablet up; phones get it here. */}
+        <div className="mt-8 sm:hidden">
+          <Link to="/matches" className="btn-secondary w-full px-5 py-3">
             Match history
           </Link>
         </div>
