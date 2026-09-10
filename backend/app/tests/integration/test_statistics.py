@@ -273,6 +273,15 @@ def test_match_summary_after_nine_darter(client, setup):
     assert loser["three_dart_average"] == 60.0
     assert loser["checkout_percentage"] is None
 
+    assert body["game_type"] == "x01"
+    assert len(body["legs"]) == 1
+    leg = body["legs"][0]
+    assert leg["leg_number"] == 1
+    assert leg["status"] == "completed"
+    assert leg["winner_player_id"] == setup["own"]["id"]
+    assert leg["darts_thrown"][setup["own"]["id"]] == 9
+    assert leg["darts_thrown"][setup["guest"]["id"]] == 6
+
 
 def test_match_summary_works_live_mid_match(client, setup):
     match = client.post(

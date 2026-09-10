@@ -28,6 +28,7 @@ from app.matches.models import (
     DartThrow,
     GameType,
     Leg,
+    LegPlayerState,
     LegStatus,
     Match,
     MatchStatus,
@@ -177,14 +178,40 @@ def match_summary(session: Session, match_id: uuid.UUID) -> dict:
             }
         )
 
+    # Leg-by-leg results with each player's dart count, for the
+    # match summary screen. Abandoned legs are listed as they stand.
+    leg_states = session.execute(
+        select(LegPlayerState.leg_id, LegPlayerState.player_id, LegPlayerState.darts_thrown)
+        .join(Leg, LegPlayerState.leg_id == Leg.id)
+        .where(Leg.match_id == match.id)
+    ).all()
+    darts_by_leg: dict[uuid.UUID, dict[uuid.UUID, int]] = {}
+    for leg_id, player_id, darts_thrown in leg_states:
+        darts_by_leg.setdefault(leg_id, {})[player_id] = darts_thrown
+    legs = [
+        {
+            "leg_number": leg.leg_number,
+            "status": leg.status,
+            "starting_player_id": leg.starting_player_id,
+            "winner_player_id": leg.winner_player_id,
+            "darts_thrown": {
+                str(pid): darts_by_leg.get(leg.id, {}).get(pid, 0)
+                for pid in (match.player1_id, match.player2_id)
+            },
+        }
+        for leg in match.legs
+    ]
+
     return {
         "id": match.id,
+        "game_type": match.game_type,
         "status": match.status,
         "best_of_legs": match.best_of_legs,
         "winner_player_id": match.winner_player_id,
         "started_at": match.started_at,
         "completed_at": match.completed_at,
         "players": players,
+        "legs": legs,
     }
 
 

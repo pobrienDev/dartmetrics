@@ -134,3 +134,41 @@ export interface PlayerStats {
   checkout_successes: number
   checkout_percentage: number | null
 }
+
+// --- Match summary (GET /matches/{id}/summary) ------------------------------
+
+export interface PlayerMatchSummary {
+  player_id: string
+  display_name: string
+  legs_won: number
+  darts_thrown: number
+  points_scored: number
+  three_dart_average: number | null
+  highest_visit: number | null
+  count_100_plus: number
+  count_140_plus: number
+  count_180: number
+  checkout_attempts: number
+  checkout_successes: number
+  checkout_percentage: number | null
+}
+
+export interface LegSummary {
+  leg_number: number
+  status: string
+  starting_player_id: string
+  winner_player_id: string | null
+  darts_thrown: Record<string, number> // player id -> darts in this leg
+}
+
+export interface MatchSummary {
+  id: string
+  game_type: GameType
+  status: MatchStatus
+  best_of_legs: number
+  winner_player_id: string | null
+  started_at: string | null
+  completed_at: string | null
+  players: PlayerMatchSummary[]
+  legs: LegSummary[]
+}

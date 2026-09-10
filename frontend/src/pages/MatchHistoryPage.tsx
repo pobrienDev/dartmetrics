@@ -1,6 +1,6 @@
 // Match history: filterable, paginated list of the user's matches
-// (FR-010). In-progress matches resume scoring; completed ones open
-// the match's final state.
+// (FR-010). In-progress matches resume scoring; finished ones open
+// the match summary.
 
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
@@ -8,6 +8,8 @@ import { Link } from 'react-router-dom'
 
 import { api } from '../api/client'
 import type { MatchListItem, MatchListResponse, MatchStatus } from '../api/types'
+import { AppHeader } from '../components/AppHeader'
+import { GAME_CHIP, GAME_LABELS } from '../utils/games'
 
 const PAGE_SIZE = 10
 
@@ -19,46 +21,46 @@ const FILTERS: { label: string; value: MatchStatus | null }[] = [
 ]
 
 const STATUS_BADGE: Record<MatchStatus, string> = {
-  scheduled: 'bg-gray-100 text-gray-600',
-  in_progress: 'bg-amber-100 text-amber-700',
-  completed: 'bg-emerald-100 text-emerald-700',
-  cancelled: 'bg-gray-100 text-gray-500',
+  scheduled: 'bg-ink-700 text-ink-300',
+  in_progress: 'bg-gold-500/15 text-gold-300',
+  completed: 'bg-felt-900/70 text-felt-300',
+  cancelled: 'bg-ink-700 text-ink-400',
 }
 
 function MatchCard({ match }: { match: MatchListItem }) {
   const [p1, p2] = match.players
-  const winnerName = match.players.find(
-    (p) => p.player_id === match.winner_player_id,
-  )?.display_name
+  const winnerId = match.winner_player_id
+  const href = match.status === 'in_progress' ? `/matches/${match.id}` : `/matches/${match.id}/summary`
 
   return (
     <Link
-      to={`/matches/${match.id}`}
-      className="flex items-center justify-between rounded-xl bg-white px-4 py-3 shadow-sm hover:bg-emerald-50"
+      to={href}
+      className="card flex items-center justify-between gap-4 px-4 py-3 transition hover:border-felt-600"
     >
-      <div>
-        <p className="font-medium text-gray-900">
-          {p1.display_name}{' '}
-          <span className="mx-1 font-bold tabular-nums">
+      <div className="min-w-0">
+        <p className="font-medium">
+          <span className={p1.player_id === winnerId ? 'text-felt-300' : ''}>{p1.display_name}</span>{' '}
+          <span className="mx-1 font-display text-xl font-bold tabular-nums">
             {p1.legs_won}–{p2.legs_won}
           </span>{' '}
-          {p2.display_name}
+          <span className={p2.player_id === winnerId ? 'text-felt-300' : ''}>{p2.display_name}</span>
         </p>
-        <p className="mt-0.5 text-xs text-gray-500">
-          {new Date(match.created_at).toLocaleDateString(undefined, {
-            day: 'numeric',
-            month: 'short',
-            year: 'numeric',
-          })}
-          {' · '}
-          {match.game_type === 'x01' ? '501' : match.game_type.replace('_', ' ')}
-          {' · '}best of {match.best_of_legs}
-          {winnerName && ` · ${winnerName} won`}
+        <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink-400">
+          <span className={`rounded-md border px-1.5 py-0.5 font-medium ${GAME_CHIP[match.game_type]}`}>
+            {GAME_LABELS[match.game_type]}
+          </span>
+          <span>best of {match.best_of_legs}</span>
+          <span>·</span>
+          <span>
+            {new Date(match.created_at).toLocaleDateString(undefined, {
+              day: 'numeric',
+              month: 'short',
+              year: 'numeric',
+            })}
+          </span>
         </p>
       </div>
-      <span
-        className={`rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_BADGE[match.status]}`}
-      >
+      <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_BADGE[match.status]}`}>
         {match.status.replace('_', ' ')}
       </span>
     </Link>
@@ -86,23 +88,13 @@ export function MatchHistoryPage() {
   const hasNext = offset + PAGE_SIZE < total
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4">
-        <Link to="/" className="text-sm text-emerald-600 hover:underline">
-          ← Dashboard
-        </Link>
-        <Link
-          to="/matches/new"
-          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700"
-        >
-          + New Match
-        </Link>
-      </header>
+    <div className="min-h-screen">
+      <AppHeader />
 
-      <main className="mx-auto max-w-2xl px-6 py-8">
-        <h1 className="mb-4 text-2xl font-bold text-gray-900">Match history</h1>
+      <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
+        <h1 className="mb-4 font-display text-4xl font-bold">Match history</h1>
 
-        <div className="mb-4 flex gap-2">
+        <div className="mb-4 flex flex-wrap gap-2">
           {FILTERS.map((filter) => (
             <button
               key={filter.label}
@@ -110,10 +102,10 @@ export function MatchHistoryPage() {
                 setStatus(filter.value)
                 setOffset(0)
               }}
-              className={`rounded-full px-3 py-1.5 text-sm font-medium ${
+              className={`rounded-full px-3 py-1.5 text-sm font-medium transition ${
                 status === filter.value
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-white text-gray-600 shadow-sm hover:bg-gray-100'
+                  ? 'bg-felt-500 text-ink-950'
+                  : 'bg-ink-800 text-ink-300 hover:bg-ink-700'
               }`}
             >
               {filter.label}
@@ -121,17 +113,17 @@ export function MatchHistoryPage() {
           ))}
         </div>
 
-        {query.isLoading && <p className="text-gray-500">Loading…</p>}
+        {query.isLoading && <p className="text-ink-400">Loading…</p>}
         {query.isError && (
-          <p role="alert" className="text-red-600">
+          <p role="alert" className="text-bust-400">
             Could not load matches.
           </p>
         )}
 
         {query.data && query.data.items.length === 0 && (
-          <p className="rounded-xl bg-white p-6 text-center text-gray-500 shadow-sm">
+          <p className="card p-6 text-center text-ink-400">
             No matches here yet.{' '}
-            <Link to="/matches/new" className="text-emerald-600 hover:underline">
+            <Link to="/matches/new" className="text-felt-400 hover:underline">
               Start one?
             </Link>
           </p>
@@ -148,17 +140,17 @@ export function MatchHistoryPage() {
             <button
               onClick={() => setOffset(offset - PAGE_SIZE)}
               disabled={!hasPrev}
-              className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-40"
+              className="btn-secondary px-3 py-1.5"
             >
               ← Newer
             </button>
-            <span className="text-gray-500">
+            <span className="text-ink-400">
               {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
             </span>
             <button
               onClick={() => setOffset(offset + PAGE_SIZE)}
               disabled={!hasNext}
-              className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-40"
+              className="btn-secondary px-3 py-1.5"
             >
               Older →
             </button>

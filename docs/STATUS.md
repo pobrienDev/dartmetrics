@@ -157,6 +157,46 @@ through the public URL. Every push to `main` redeploys via the Blueprint
 sync. Housekeeping: rotate the Neon password (it was shared in chat
 during setup) and update Render's `DATABASE_URL` afterwards.
 
+## Visual overhaul, batch 1 (2026-09-09)
+
+Reviewed every screen at desktop and phone widths before Phase 10 and
+shipped the highest-impact set:
+
+- **Dark theme across the app** with design tokens in
+  `frontend/src/index.css` (`ink` greys, `felt` green, gold, bust red),
+  Barlow Condensed for headings and scores, Inter for text (Google
+  Fonts, with system fallbacks). Shared classes (`card`, `btn-*`,
+  `input`, `choice-*`, `label`, `score-display`) are Tailwind v4
+  `@utility` declarations — v4 refuses `@apply` on classes from a
+  components layer.
+- **Shared chrome:** `AppHeader` (logo, nav, New Match, sign out),
+  `Logo`/`BoardGlyph`, `AuthLayout` with an SVG `Dartboard` on the
+  login and register pages. New dartboard favicon; Vite's leftover
+  icons.svg removed.
+- **Scoring screen:** live remaining score while darts are entered;
+  checkout hints from a standard-out table (`utils/checkouts.ts`,
+  fits the darts left in the visit, null for bogey numbers); bust
+  (shake, red), 180 (gold flash, "ONE HUNDRED AND EIGHTY!"), 100+
+  (gold) and checkout (green flash) moments driven by the server's
+  verdict; bot names lose the " Bot" suffix next to the BOT chip;
+  Bull key restyled; winner screen links to the summary.
+- **Match summary page** at `/matches/:id/summary`: scoreline, winner,
+  per-player table (darts, average, high visit, 100+/140+/180s,
+  checkout %) and leg-by-leg results. Backend summary now returns
+  `game_type` and `legs[]` with per-player darts. History links
+  finished matches here and in-progress ones to scoring.
+- Dashboard: first-visit empty state (hidden when a match is
+  resumable), display-font KPI cards.
+
+Frontend 42 tests (+10: checkouts table, scoring feedback, summary
+page), backend 249. Verified in the browser: live score, hint, 180
+moment, bot reply, summary, phone layout. Playwright e2e left to CI
+(no local browser binary installed).
+
+Still on the visual list: bot darts animating in one at a time,
+KPI sparklines/trends, page transitions, a match summary link from
+the dashboard resume row.
+
 ## Next up
 
 4. Phase 10 portfolio polish: README hero/screenshots, architecture

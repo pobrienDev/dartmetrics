@@ -41,14 +41,24 @@ class PlayerMatchSummary(BaseModel):
     checkout_percentage: float | None
 
 
+class LegSummary(BaseModel):
+    leg_number: int
+    status: str
+    starting_player_id: uuid.UUID
+    winner_player_id: uuid.UUID | None
+    darts_thrown: dict[str, int]  # player id -> darts in this leg
+
+
 class MatchSummaryResponse(BaseModel):
     id: uuid.UUID
+    game_type: str
     status: str
     best_of_legs: int
     winner_player_id: uuid.UUID | None
     started_at: datetime | None
     completed_at: datetime | None
     players: list[PlayerMatchSummary]
+    legs: list[LegSummary]
 
 
 class PlayerStatsResponse(BaseModel):

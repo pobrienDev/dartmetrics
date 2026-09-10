@@ -7,6 +7,7 @@ import { DashboardPage } from './pages/DashboardPage'
 import { LiveScoringPage } from './pages/LiveScoringPage'
 import { LoginPage } from './pages/LoginPage'
 import { MatchHistoryPage } from './pages/MatchHistoryPage'
+import { MatchSummaryPage } from './pages/MatchSummaryPage'
 import { NewMatchPage } from './pages/NewMatchPage'
 import { RegisterPage } from './pages/RegisterPage'
 
@@ -25,6 +26,7 @@ export default function App() {
               <Route path="/matches" element={<MatchHistoryPage />} />
               <Route path="/matches/new" element={<NewMatchPage />} />
               <Route path="/matches/:matchId" element={<LiveScoringPage />} />
+              <Route path="/matches/:matchId/summary" element={<MatchSummaryPage />} />
             </Route>
           </Routes>
         </BrowserRouter>

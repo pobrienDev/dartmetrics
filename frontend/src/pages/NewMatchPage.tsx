@@ -1,14 +1,15 @@
-﻿// New Match: pick an existing opponent, create a guest, or choose a
+// New Match: pick an existing opponent, create a guest, or choose a
 // bot difficulty; choose the match length and who throws first, then
 // jump into live scoring.
 
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 
 import { api, ApiError } from '../api/client'
 import type { BotDifficulty, GameType, MatchState, PlayerResponse } from '../api/types'
 import { useAuth } from '../auth/useAuth'
+import { AppHeader } from '../components/AppHeader'
 import { BOT_CHOICES } from '../utils/bots'
 
 const GAME_CHOICES: { value: GameType; label: string; hint: string }[] = [
@@ -96,33 +97,25 @@ export function NewMatchPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="border-b border-gray-200 bg-white px-6 py-4">
-        <Link to="/" className="text-sm text-emerald-600 hover:underline">
-          ← Dashboard
-        </Link>
-      </header>
+    <div className="min-h-screen">
+      <AppHeader />
 
-      <main className="mx-auto max-w-lg px-6 py-8">
-        <h1 className="mb-6 text-2xl font-bold text-gray-900">New match</h1>
+      <main className="mx-auto max-w-lg px-4 py-8 sm:px-6">
+        <h1 className="mb-6 font-display text-4xl font-bold">New match</h1>
 
-        <form onSubmit={handleSubmit} className="space-y-6 rounded-xl bg-white p-6 shadow-sm">
+        <form onSubmit={handleSubmit} className="card space-y-6 p-6">
           <fieldset>
-            <legend className="mb-2 text-sm font-medium text-gray-700">Game</legend>
+            <legend className="label">Game</legend>
             <div className="flex gap-2">
               {GAME_CHOICES.map((game) => (
                 <button
                   key={game.value}
                   type="button"
                   onClick={() => setGameType(game.value)}
-                  className={`flex-1 rounded-lg border px-3 py-3 text-sm font-medium ${
-                    gameType === game.value
-                      ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
-                      : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                  }`}
+                  className={`choice flex-1 ${gameType === game.value ? 'choice-on' : 'choice-off'}`}
                 >
                   {game.label}
-                  <span className="block text-xs font-normal text-gray-500">
+                  <span className="block text-xs font-normal text-ink-400">
                     {game.hint}
                   </span>
                 </button>
@@ -131,7 +124,7 @@ export function NewMatchPage() {
           </fieldset>
 
           <fieldset>
-            <legend className="mb-2 text-sm font-medium text-gray-700">Opponent</legend>
+            <legend className="label">Opponent</legend>
             <div className="mb-2 flex gap-2">
               {(
                 [
@@ -143,11 +136,7 @@ export function NewMatchPage() {
                   key={kind.value}
                   type="button"
                   onClick={() => setOpponentKind(kind.value)}
-                  className={`flex-1 rounded-lg border px-3 py-3 text-sm font-medium ${
-                    opponentKind === kind.value
-                      ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
-                      : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                  }`}
+                  className={`choice flex-1 ${opponentKind === kind.value ? 'choice-on' : 'choice-off'}`}
                 >
                   {kind.label}
                 </button>
@@ -166,14 +155,10 @@ export function NewMatchPage() {
                     role="radio"
                     aria-checked={botDifficulty === bot.value}
                     onClick={() => setBotDifficulty(bot.value)}
-                    className={`rounded-lg border px-1 py-3 text-sm font-medium ${
-                      botDifficulty === bot.value
-                        ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
-                        : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                    }`}
+                    className={`choice px-1 ${botDifficulty === bot.value ? 'choice-on' : 'choice-off'}`}
                   >
                     {bot.label}
-                    <span className="block text-xs font-normal text-gray-500">
+                    <span className="block text-xs font-normal text-ink-400">
                       {bot.hint}
                     </span>
                   </button>
@@ -184,7 +169,7 @@ export function NewMatchPage() {
                 <select
                   value={opponentId}
                   onChange={(e) => setOpponentId(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-emerald-500 focus:outline-none"
+                  className="input"
                 >
                   <option value="">— New guest —</option>
                   {opponents.map((p) => (
@@ -200,7 +185,7 @@ export function NewMatchPage() {
                     value={guestName}
                     onChange={(e) => setGuestName(e.target.value)}
                     maxLength={100}
-                    className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-emerald-500 focus:outline-none"
+                    className="input mt-2"
                   />
                 )}
               </>
@@ -208,18 +193,14 @@ export function NewMatchPage() {
           </fieldset>
 
           <fieldset>
-            <legend className="mb-2 text-sm font-medium text-gray-700">Match length</legend>
+            <legend className="label">Match length</legend>
             <div className="flex gap-2">
               {[1, 3, 5, 7].map((n) => (
                 <button
                   key={n}
                   type="button"
                   onClick={() => setBestOf(n)}
-                  className={`flex-1 rounded-lg border px-3 py-3 text-sm font-medium ${
-                    bestOf === n
-                      ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
-                      : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                  }`}
+                  className={`choice flex-1 ${bestOf === n ? 'choice-on' : 'choice-off'}`}
                 >
                   Best of {n}
                 </button>
@@ -228,27 +209,19 @@ export function NewMatchPage() {
           </fieldset>
 
           <fieldset>
-            <legend className="mb-2 text-sm font-medium text-gray-700">Who throws first?</legend>
+            <legend className="label">Who throws first?</legend>
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={() => setOpponentStarts(false)}
-                className={`flex-1 rounded-lg border px-3 py-3 text-sm font-medium ${
-                  !opponentStarts
-                    ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
-                    : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                }`}
+                className={`choice flex-1 ${!opponentStarts ? 'choice-on' : 'choice-off'}`}
               >
                 Me
               </button>
               <button
                 type="button"
                 onClick={() => setOpponentStarts(true)}
-                className={`flex-1 rounded-lg border px-3 py-3 text-sm font-medium ${
-                  opponentStarts
-                    ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
-                    : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                }`}
+                className={`choice flex-1 ${opponentStarts ? 'choice-on' : 'choice-off'}`}
               >
                 {opponentKind === 'bot' ? 'Bot' : 'Opponent'}
               </button>
@@ -256,7 +229,7 @@ export function NewMatchPage() {
           </fieldset>
 
           {error && (
-            <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+            <p role="alert" className="rounded-xl border border-bust-700/60 bg-bust-900/40 px-3 py-2 text-sm text-bust-400">
               {error}
             </p>
           )}
@@ -264,7 +237,7 @@ export function NewMatchPage() {
           <button
             type="submit"
             disabled={createMatch.isPending}
-            className="w-full rounded-lg bg-emerald-600 px-4 py-3 font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+            className="btn-primary w-full px-4 py-3"
           >
             {createMatch.isPending ? 'Starting…' : 'Start match'}
           </button>

@@ -8,7 +8,7 @@ export function ProtectedRoute() {
   const { user, loading } = useAuth()
 
   if (loading) {
-    return <div className="p-8 text-center text-gray-500">Loading…</div>
+    return <div className="p-8 text-center text-ink-400">Loading…</div>
   }
   if (!user) {
     return <Navigate to="/login" replace />

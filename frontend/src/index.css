@@ -1,1 +1,130 @@
 @import "tailwindcss";
+
+/* Design tokens. "ink" is the dark ground the whole app sits on,
+   "felt" the green of the board and the brand, gold for big moments
+   (180s, checkouts) and bust red for the bad ones. */
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: "Barlow Condensed", "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  --color-ink-950: #070b14;
+  --color-ink-900: #0d1321;
+  --color-ink-800: #151d2e;
+  --color-ink-700: #1f2a40;
+  --color-ink-600: #2c3a55;
+  --color-ink-500: #4a5a78;
+  --color-ink-400: #7c8aa5;
+  --color-ink-300: #a9b4c8;
+  --color-ink-200: #cdd4e1;
+  --color-ink-100: #e6eaf2;
+
+  --color-felt-300: #6ee7b7;
+  --color-felt-400: #34d399;
+  --color-felt-500: #10b981;
+  --color-felt-600: #059669;
+  --color-felt-700: #047857;
+  --color-felt-800: #065f46;
+  --color-felt-900: #064e3b;
+
+  --color-gold-300: #fcd34d;
+  --color-gold-400: #fbbf24;
+  --color-gold-500: #f59e0b;
+
+  --color-bust-400: #f87171;
+  --color-bust-500: #ef4444;
+  --color-bust-700: #b91c1c;
+  --color-bust-900: #7f1d1d;
+
+  --animate-shake: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+  --animate-flash-gold: flash-gold 1s ease-out both;
+  --animate-flash-green: flash-green 1s ease-out both;
+  --animate-flash-red: flash-red 0.8s ease-out both;
+  --animate-pop: pop 0.35s ease-out both;
+  --animate-rise: rise 0.3s ease-out both;
+
+  @keyframes shake {
+    10%, 90% { transform: translateX(-2px); }
+    20%, 80% { transform: translateX(4px); }
+    30%, 50%, 70% { transform: translateX(-6px); }
+    40%, 60% { transform: translateX(6px); }
+  }
+  @keyframes flash-gold {
+    0% { box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.95); }
+    100% { box-shadow: 0 0 0 28px rgba(251, 191, 36, 0); }
+  }
+  @keyframes flash-green {
+    0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.95); }
+    100% { box-shadow: 0 0 0 28px rgba(16, 185, 129, 0); }
+  }
+  @keyframes flash-red {
+    0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.9); }
+    100% { box-shadow: 0 0 0 20px rgba(239, 68, 68, 0); }
+  }
+  @keyframes pop {
+    0% { transform: scale(0.6); opacity: 0; }
+    60% { transform: scale(1.08); opacity: 1; }
+    100% { transform: scale(1); }
+  }
+  @keyframes rise {
+    0% { transform: translateY(6px); opacity: 0; }
+    100% { transform: translateY(0); opacity: 1; }
+  }
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-ink-950 text-ink-100 font-sans antialiased;
+  }
+  ::selection {
+    @apply bg-felt-600 text-white;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, ::before, ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* Shared component classes. Tailwind v4 only lets @apply reference
+   utilities, so these are declared with @utility rather than in a
+   components layer; btn-primary can then build on btn. */
+@utility card {
+  @apply rounded-2xl border border-ink-700 bg-ink-800;
+}
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition
+    active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40;
+}
+@utility btn-primary {
+  @apply btn bg-felt-500 text-ink-950 hover:bg-felt-400;
+}
+@utility btn-secondary {
+  @apply btn border border-ink-600 bg-ink-800 text-ink-100 hover:border-ink-500 hover:bg-ink-700;
+}
+@utility btn-ghost {
+  @apply btn text-felt-400 hover:bg-ink-800 hover:text-felt-300;
+}
+@utility input {
+  @apply w-full rounded-xl border border-ink-600 bg-ink-900 px-3 py-2.5 text-ink-100
+    placeholder:text-ink-500 focus:border-felt-500 focus:outline-none focus:ring-2 focus:ring-felt-500/30;
+}
+@utility choice {
+  @apply rounded-xl border px-3 py-3 text-sm font-medium transition;
+}
+@utility choice-on {
+  @apply border-felt-500 bg-felt-900/60 text-felt-300;
+}
+@utility choice-off {
+  @apply border-ink-600 bg-ink-900 text-ink-300 hover:border-ink-500 hover:bg-ink-800;
+}
+@utility label {
+  @apply mb-1.5 block text-xs font-semibold uppercase tracking-wider text-ink-400;
+}
+@utility score-display {
+  @apply font-display font-extrabold leading-none tabular-nums tracking-tight;
+}
