@@ -103,6 +103,20 @@ bot reply also removes the preceding human visit. Accuracy tables are
 tuned to ~32/47/63/81/100 three-dart averages when aiming T20.
 Backend 229 tests, frontend 32 + 2 e2e.
 
+**2026-09-10 bot retune (Halve It):** the easy bot felt too strong at
+Halve It. Cause: a missed double/triple that strayed into a
+neighbouring segment landed in that neighbour's *ring* a flat 40% of
+the time at every difficulty, and aiming at the outer bull carried a
+flat +12% bonus — so "any double", "any triple" and "green bull"
+rounds were nearly skill-free (easy qualified on doubles 64% vs noob
+62%). Fix in app/scoring/bot.py: neighbour-ring chance now equals the
+bot's own ring hit chance, and the outer-bull bonus scales with
+inner-bull skill. Noob/easy accuracy tables retuned (triple/double/
+single up, scatter down) so T20 averages stay on 32/47; medium and up
+unchanged. Simulated Halve It medians (9 rounds from 40): noob 11,
+easy 33, medium 84, hard 195, pro 338 (were 17/44/92/197/324);
+easy now qualifies on the any-double round 48% of the time (was 64%).
+
 ## Security hardening (complete, 2026-09-09)
 
 Reviewed auth, config, access rules, error handling, and the API

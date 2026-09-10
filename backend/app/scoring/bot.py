@@ -58,8 +58,8 @@ class Accuracy:
 
 
 ACCURACY: dict[BotDifficulty, Accuracy] = {
-    BotDifficulty.NOOB: Accuracy(0.04, 0.05, 0.40, 0.04, 0.12, 0.50, 0.12, 0.70),
-    BotDifficulty.EASY: Accuracy(0.09, 0.12, 0.60, 0.08, 0.20, 0.60, 0.05, 0.55),
+    BotDifficulty.NOOB: Accuracy(0.06, 0.07, 0.50, 0.04, 0.12, 0.50, 0.12, 0.65),
+    BotDifficulty.EASY: Accuracy(0.11, 0.14, 0.65, 0.08, 0.20, 0.60, 0.05, 0.53),
     BotDifficulty.MEDIUM: Accuracy(0.17, 0.22, 0.75, 0.15, 0.30, 0.70, 0.02, 0.45),
     BotDifficulty.HARD: Accuracy(0.27, 0.35, 0.85, 0.25, 0.38, 0.80, 0.01, 0.35),
     BotDifficulty.PRO: Accuracy(0.40, 0.48, 0.93, 0.38, 0.42, 0.88, 0.00, 0.30),
@@ -124,11 +124,13 @@ def throw(aim: Aim, accuracy: Accuracy, rng: random.Random) -> DartInput:
         return DartInput(segment=aim.segment, multiplier=aim.multiplier)
 
     # Missed the ring. Either stay in this segment's single, or stray
-    # into a neighbour (same ring 40% of the time, its single otherwise).
+    # into a neighbour. Landing in the neighbour's ring is about as
+    # likely as hitting the ring aimed at: a flat chance here let weak
+    # bots collect "any double / any triple" in Halve It almost for free.
     if rng.random() >= accuracy.scatter:
         return _with_band(aim.segment, aim, accuracy, rng)
     neighbour = _neighbour(aim.segment, rng)
-    if rng.random() < 0.4:
+    if rng.random() < hit_probability:
         return DartInput(segment=neighbour, multiplier=aim.multiplier)
     return _with_band(neighbour, aim, accuracy, rng)
 
@@ -139,7 +141,9 @@ def _throw_at_bull(aim: Aim, accuracy: Accuracy, rng: random.Random) -> DartInpu
         p_inner, p_outer = accuracy.inner_bull, accuracy.outer_bull
     else:
         # The outer ring is a bigger target; some darts still drop inside.
-        p_inner, p_outer = accuracy.inner_bull * 0.5, accuracy.outer_bull + 0.12
+        # The bonus scales with skill: a flat one made weak bots far too
+        # good at Halve It's green-bull round.
+        p_inner, p_outer = accuracy.inner_bull * 0.5, accuracy.outer_bull + accuracy.inner_bull * 0.5
 
     roll = rng.random()
     if roll < p_inner:

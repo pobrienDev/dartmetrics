@@ -41,6 +41,26 @@ def test_scoring_average_increases_with_difficulty(difficulty):
     assert abs(per_visit - expected) < 6
 
 
+def test_stray_ring_hits_scale_with_skill():
+    """A missed double that drifts into a neighbouring segment lands in
+    the neighbour's ring roughly as often as the bot hits rings at all.
+    A flat chance here once made Halve It's any-double round nearly
+    skill-free (the easy bot qualified about as often as the noob)."""
+    def neighbour_double_rate(difficulty: BotDifficulty) -> float:
+        rng = random.Random(7)
+        darts = [throw(Aim(20, Multiplier.DOUBLE), ACCURACY[difficulty], rng) for _ in range(20000)]
+        strays = sum(
+            1 for d in darts if d.multiplier is Multiplier.DOUBLE and d.segment in (1, 5)
+        )
+        return strays / len(darts)
+
+    noob, easy, pro = (
+        neighbour_double_rate(d) for d in (BotDifficulty.NOOB, BotDifficulty.EASY, BotDifficulty.PRO)
+    )
+    assert noob < 0.05
+    assert noob < easy < pro
+
+
 def test_throw_always_produces_a_legal_dart():
     rng = random.Random(7)
     aims = [
