@@ -116,6 +116,13 @@ single up, scatter down) so T20 averages stay on 32/47; medium and up
 unchanged. Simulated Halve It medians (9 rounds from 40): noob 11,
 easy 33, medium 84, hard 195, pro 338 (were 17/44/92/197/324);
 easy now qualifies on the any-double round 48% of the time (was 64%).
+Second pass the same day, still too strong in play: the plain-single
+hit rate (unconstrained by the T20 tuning, and what the four band
+rounds run on) was 65% for easy and 50% for noob, well above a
+scatter-model estimate of ~45% / ~35% for their averages. Lowered to
+0.46 / 0.36 (band 0.55 / 0.50, inner bull 0.06 / 0.03). Halve It
+medians now noob 9, easy 25 (easy ends on or below 40 in 67% of
+games); medium and up untouched; T20 averages unchanged.
 
 ## Security hardening (complete, 2026-09-09)
 
