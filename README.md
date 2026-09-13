@@ -1,24 +1,115 @@
-# DartMetrics
+<p align="center">
+  <img src="frontend/public/favicon.svg" width="72" alt="" />
+</p>
 
-A darts league, scoring, and player analytics platform.
+<h1 align="center">DartMetrics</h1>
 
-Records 501 matches at per-dart granularity and derives player statistics
-(three-dart average, checkout percentage, 180 counts, head-to-head) from
-raw throw data.
+<p align="center">
+  <strong>Every dart, counted.</strong><br />
+  501, Cricket and Halve It scored dart by dart, with the averages, checkouts
+  and 180s that fall out of the raw throws. Play a friend, a guest, or one of
+  five bots.
+</p>
 
-**Live demo:** https://dartmetrics.onrender.com (free tier: the first
-request after 15 idle minutes takes about a minute while the container
-starts).
+<p align="center">
+  <a href="https://dartmetrics.onrender.com"><strong>Live demo</strong></a> ·
+  <a href="https://github.com/pobrienDev/dartmetrics/actions/workflows/ci.yml"><img src="https://github.com/pobrienDev/dartmetrics/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-10b981" alt="MIT license" /></a>
+</p>
 
-**Status:** playable end to end — 501, Cricket, and Halve It with bot
-opponents, per-dart history, and career statistics. Deployed on Render
-with the database on Neon.
+<p align="center">
+  <img src="docs/screenshots/scoring-checkout.png" width="800" alt="Live scoring: Sam on 141 with the suggested checkout T20 T19 D12 shown under the score" />
+</p>
 
-## Stack
+> **Try it:** https://dartmetrics.onrender.com — register an account and
+> play a best-of-1 against a bot; it takes about two minutes. It runs on
+> free tiers, so the first request after 15 idle minutes takes about a
+> minute while the container wakes.
 
-- Backend: FastAPI (upcoming), SQLAlchemy 2.x, Alembic, PostgreSQL
-- Frontend: React + TypeScript (later phase)
-- Tooling: Docker, pytest, GitHub Actions (upcoming)
+## What it does
+
+- **Three game modes.** 501 double-out, Cricket (race to close), and
+  Halve It (house rules, nine rounds, start on 40). Rules for the
+  latter two are specified in [docs/GAME_MODES.md](docs/GAME_MODES.md).
+- **Per-dart scoring.** Every dart is stored, not just visit totals, so
+  three-dart averages, first-nine averages, checkout percentages,
+  highest visits and 180 counts are derived from the raw throws and can
+  always be recomputed.
+- **Live scoring that helps.** The score counts down as each dart goes
+  in, a checkout suggestion appears whenever a finish is on, and busts,
+  180s and checkouts each get their moment. Undo removes the last visit.
+- **Five bot opponents**, Noob to Pro, driven by a pure throw simulator
+  with tuned accuracy tables. Bot visits go through the same rules and
+  statistics as human ones.
+- **Match summaries and history.** Scoreline, per-player numbers and a
+  leg-by-leg breakdown for every match; a filterable, paginated history.
+- **A backend that defends the rules.** Pure scoring engines, a
+  transactional turn service with row locking, and database check
+  constraints that reject impossible states even if the app is bypassed.
+
+## Screenshots
+
+| Dashboard | Match summary |
+|---|---|
+| ![Dashboard with career KPIs and a match to resume](docs/screenshots/dashboard.png) | ![Match summary: scoreline, per-player stats, legs](docs/screenshots/summary.png) |
+
+| Running score mid-visit | A 180 |
+|---|---|
+| ![Live score during a visit](docs/screenshots/scoring-live.png) | ![ONE HUNDRED AND EIGHTY](docs/screenshots/scoring-180.png) |
+
+| Match history | New match | On a phone |
+|---|---|---|
+| ![History](docs/screenshots/history.png) | ![New match form](docs/screenshots/new-match.png) | ![Scoring on a phone](docs/screenshots/scoring-phone.png) |
+
+<details>
+<summary>Sign-in page</summary>
+
+![Sign-in page with the dartboard](docs/screenshots/login.png)
+
+</details>
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph Browser
+        SPA["React 19 + TypeScript<br/>Vite · Tailwind v4 · TanStack Query"]
+    end
+
+    subgraph Container["One container (Render)"]
+        direction TB
+        API["FastAPI routers<br/>/api/v1/auth · players · matches · statistics"]
+        SVC["Services<br/>turn service (row-locked, transactional)<br/>bot service · statistics"]
+        ENG["Pure scoring engines<br/>501 · Cricket · Halve It · bot simulator<br/>(no framework, no DB)"]
+        STATIC["Static SPA build<br/>index.html + hashed assets"]
+        API --> SVC --> ENG
+    end
+
+    DB[("PostgreSQL (Neon)<br/>users · players · matches · legs<br/>leg_player_states · turns · dart_throws")]
+
+    SPA -- "same-origin JSON + Bearer JWT" --> API
+    SPA -. "served by" .-> STATIC
+    SVC -- "SQLAlchemy 2 · Alembic" --> DB
+```
+
+Three ideas hold it together:
+
+- **The backend is the source of truth.** Scoring is a pure domain engine
+  (`backend/app/scoring/`) with no framework or database dependencies;
+  services persist its results transactionally. The frontend mirrors a
+  few rules only to decide when a visit is complete, and re-renders from
+  the server's answer.
+- **Store raw events, derive statistics.** `dart_throws` → `turns` →
+  `legs` → `matches`. Nothing aggregated is stored, so every statistic
+  can be recomputed and audited, and new ones need no migration.
+- **The database defends the rules.** Check constraints reject a fourth
+  dart, a bust that changes the score, or a remaining score of 1, even
+  if application code is bypassed.
+
+**Stack:** FastAPI, SQLAlchemy 2, Alembic, PostgreSQL, Argon2 + JWT,
+slowapi · React 19, TypeScript, Vite, Tailwind v4, TanStack Query,
+React Router · pytest, Vitest, Playwright, GitHub Actions · Docker,
+Render, Neon.
 
 ## Supported 501 rules
 
@@ -89,18 +180,6 @@ re-enter.
   returns the user to the page they were on afterwards, so a match in
   progress can be resumed.
 
-### Design principles
-
-- **The backend is the source of truth.** Scoring is a pure domain engine
-  (`app/scoring/`) with no framework or database dependencies; services
-  persist its results transactionally.
-- **Store raw events, derive statistics.** Every dart is stored
-  (`dart_throws` → `turns` → `legs` → `matches`), so statistics can always
-  be recomputed and audited.
-- **The database defends the rules.** Check constraints reject impossible
-  states (a fourth dart, a bust that changes the score, a remaining score
-  of 1) even if application code is bypassed.
-
 ## Security notes
 
 - **Credential endpoints are rate limited** (`slowapi`, default 10
@@ -133,29 +212,52 @@ re-enter.
 
 ## Local development
 
-Requirements: Python 3.12+, Docker Desktop.
+Requirements: Python 3.12+, Node.js 20+, Docker Desktop.
 
-```
+```bash
 # 1. Configuration (defaults work for local development)
-copy .env.example .env
+cp .env.example .env            # Windows: copy .env.example .env
 
 # 2. Start PostgreSQL
 docker compose up -d
 
-# 3. Backend environment
+# 3. Backend
 cd backend
 python -m venv .venv
-.venv\Scripts\python -m pip install --upgrade pip
-.venv\Scripts\pip install -e . --group dev
+.venv/bin/pip install -e . --group dev      # Windows: .venv\Scripts\pip ...
+.venv/bin/alembic upgrade head
+.venv/bin/pytest                            # 250 tests; integration tests skip without PostgreSQL
+.venv/bin/uvicorn app.main:app --reload     # http://localhost:8000, docs at /docs
 
-# 4. Apply database migrations
-.venv\Scripts\alembic upgrade head
-
-# 5. Run the tests (40 unit + 4 PostgreSQL integration)
-.venv\Scripts\pytest
+# 4. Frontend (second terminal)
+cd frontend
+npm ci
+npm run dev                                 # http://localhost:5173, proxies /api to :8000
+npm test                                    # Vitest
+npx playwright test                         # end-to-end, needs both servers
 ```
 
-Integration tests skip automatically if PostgreSQL is not running.
+### Sample data (local)
+
+```bash
+cd backend && .venv/bin/python -m app.seed_demo          # --reset rebuilds it
+```
+
+Creates a local account, `demo@dartmetrics.app` / `demo-darts`, with a
+month of simulated 501, Cricket and Halve It matches against guests and
+bots, plus one match to resume. Every visit is played through the real
+services with darts from the bot simulator, so the history obeys every
+rule. Useful for developing against populated screens and for the
+screenshot tour below; the live site has no shared demo account.
+
+### Screenshots
+
+```bash
+cd frontend && node scripts/screenshots.mjs
+```
+
+Re-seeds nothing itself: seed first, run both dev servers, and it drives
+the app through Google Chrome to refresh `docs/screenshots/`.
 
 ## Deployment
 
@@ -215,16 +317,24 @@ Then open http://localhost:8000. This uses the PostgreSQL started by
 backend/
   app/
     scoring/      pure game engines + bot simulator (no framework dependencies)
-    auth/         User model (accounts)
-    players/      Player model (competitors; guests and bots supported)
-    matches/      Match, Leg, LegPlayerState, Turn, DartThrow + turn service
-    common/       domain error types
-    tests/        unit and integration suites
+    auth/         accounts, Argon2 + JWT
+    players/      players: linked to a user, guests, and the five bots
+    matches/      Match, Leg, LegPlayerState, Turn, DartThrow + the turn service
+    statistics/   career stats, head-to-head, match summaries
+    common/       domain errors, security helpers, rate limiter
+    seed_demo.py  demo account + history
+    tests/        unit and PostgreSQL integration suites
   alembic/        database migrations
-frontend/         React + TypeScript app (Vite); dist/ is served by the API in production
+frontend/
+  src/pages/      dashboard, new match, live scoring, summary, history, auth
+  src/components/ app header, auth layout, dartboard, logo
+  src/utils/      checkout table, cricket marks, dart helpers
+  e2e/            Playwright journey
+  scripts/        README screenshot tour
+docs/             game mode rules, project status, screenshots
 Dockerfile          production image: frontend build + backend, migrations on start
 docker-entrypoint.sh
-render.yaml         Render Blueprint (web service + PostgreSQL)
+render.yaml         Render Blueprint (web service; database on Neon)
 docker-compose.yml  local PostgreSQL
 ```
 

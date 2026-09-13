@@ -229,12 +229,37 @@ Still on the visual list: bot darts animating in one at a time,
 KPI sparklines/trends, page transitions, a match summary link from
 the dashboard resume row.
 
+## Phase 10 portfolio polish (2026-09-13)
+
+- **README rewritten as a landing page:** hero with tagline, CI and
+  license badges, live-demo link and demo credentials, a screenshot
+  grid, a Mermaid architecture diagram, a "what it does" list, then the
+  carried-over rules, bot, auth, security, local-dev and deployment
+  sections. Local-dev commands now given for macOS/Linux with Windows
+  variants.
+- **Demo data:** `backend/app/seed_demo.py` creates
+  `demo@dartmetrics.app` / `demo-darts` with 13 backdated matches
+  (501, Cricket, Halve It vs guests and bots, played through the real
+  services with bot-simulator darts from tuned personas) plus one live
+  match with Sam on 321. `--reset` rebuilds; seeded RNG.
+- **Screenshots:** `frontend/scripts/screenshots.mjs` drives the app
+  with Playwright through the locally installed Google Chrome (no
+  browser download) and writes nine PNGs to `docs/screenshots/`
+  (2x desktop, 3x phone). Re-run after UI changes: seed, start both
+  dev servers, run the script.
+- Login hero: dartboard anchored bottom-right so the headline stays
+  clear.
+- Decided against a shared demo account on the live site (anyone could
+  mess it up; a public password; synthetic history). The seed script
+  stays as local sample data for development and screenshots; the
+  README tells visitors to register and play a best-of-1 against a bot.
+- Remaining: tag v0.1.0, flip the repository to public.
+
 ## Next up
 
-4. Phase 10 portfolio polish: README hero/screenshots, architecture
-   diagram, seed/demo data, release tag v0.1.0.
-5. Later (V1): refresh tokens + revocation, Elo, 301, leagues,
-   trend charts, player comparison.
+- Tag v0.1.0 and make the repository public.
+- Later (V1): refresh tokens + revocation, Elo, 301, leagues, trend
+  charts, player comparison, bot darts animating in one at a time.
 
 ## Local setup
 
