@@ -3,7 +3,7 @@
 > Living document: where the project stands, key decisions, and what
 > comes next. Update at the end of significant work sessions.
 
-**Last updated:** 2026-09-09 (Phase 9 deployment)
+**Last updated:** 2026-09-13 (v0.1.0 released, repository public)
 
 ## Where things stand
 
@@ -253,7 +253,10 @@ the dashboard resume row.
   mess it up; a public password; synthetic history). The seed script
   stays as local sample data for development and screenshots; the
   README tells visitors to register and play a best-of-1 against a bot.
-- Remaining: tag v0.1.0, flip the repository to public.
+- **Shipped 2026-09-13:** tagged and released v0.1.0
+  (https://github.com/pobrienDev/dartmetrics/releases/tag/v0.1.0) and
+  made the repository public. Pre-publication audit: no secrets in any
+  commit, fixtures on example.com, MIT license added.
 
 ## Next up
 
