@@ -187,8 +187,7 @@ project `dartmetrics`, AWS us-east-2, Postgres 16, direct connection
 string as `DATABASE_URL`). First deploy from commit `2750367`: schema
 migrated, health/ready green, SPA deep links and asset caching verified
 through the public URL. Every push to `main` redeploys via the Blueprint
-sync. Housekeeping: rotate the Neon password (it was shared in chat
-during setup) and update Render's `DATABASE_URL` afterwards.
+sync. The Neon password was rotated after setup.
 
 ## Visual overhaul, batch 1 (2026-09-09)
 

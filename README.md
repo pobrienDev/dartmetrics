@@ -227,3 +227,7 @@ docker-entrypoint.sh
 render.yaml         Render Blueprint (web service + PostgreSQL)
 docker-compose.yml  local PostgreSQL
 ```
+
+## License
+
+MIT — see [LICENSE](LICENSE).
