@@ -152,7 +152,7 @@ dart lands from the difficulty's accuracy table. Missed triples
 mostly drop into the big single; wilder misses stray into
 neighbouring segments, landing in the neighbour's ring only about as
 often as the bot hits the ring it aimed at; the worst bots sometimes
-miss the board. Aiming at T20, the bots average about 32, 47, 63, 81
+miss the board. Aiming at T20, the bots average about 24, 47, 63, 81
 and 100 per three darts respectively.
 
 Bot visits are recorded through the same turn service as human ones

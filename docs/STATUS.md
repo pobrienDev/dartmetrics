@@ -3,7 +3,7 @@
 > Living document: where the project stands, key decisions, and what
 > comes next. Update at the end of significant work sessions.
 
-**Last updated:** 2026-09-18 (casual Cricket bots)
+**Last updated:** 2026-09-18 (casual Cricket bots, noob retune)
 
 ## Where things stand
 
@@ -148,6 +148,19 @@ easy ~13, medium ~9, hard ~7, pro ~6), so the bots are as beatable as
 before, just less predictable. README and the unit tests updated
 (six Cricket aiming tests replace the highest-first one). Commit
 560c5ec.
+
+**2026-09-18 noob retune:** the noob bot was still far too good for a
+beginner: a 32 three-dart average, the aimed-at segment hit a third
+of the time, a Cricket board closed in ~21 visits and a 501 leg in
+~28, which is a competent pub player. Accuracy table lowered to
+triple 0.03, double 0.05, single 0.28, inner/outer bull 0.02/0.08,
+board miss 0.20, scatter 0.70 (was 0.06/0.07/0.36/0.03/0.12/0.12/
+0.65; band unchanged at 0.50). Simulated: T20 average 24 (the
+difficulty picker's hint is now "~25 avg"), segment hit rate 26%,
+501 leg ~40 visits (worst of 400 seeds: 204 darts, inside the test's
+400-dart bound), Cricket board ~30 visits, Halve It median 2 from
+40. Easy and up untouched, so the noob→easy step is now 24→47; bring
+easy down to ~40 if that gap plays badly.
 
 ## Security hardening (complete, 2026-09-09)
 
