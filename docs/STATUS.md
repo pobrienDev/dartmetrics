@@ -3,7 +3,7 @@
 > Living document: where the project stands, key decisions, and what
 > comes next. Update at the end of significant work sessions.
 
-**Last updated:** 2026-09-13 (v0.1.0 released, repository public)
+**Last updated:** 2026-09-18 (casual Cricket bots)
 
 ## Where things stand
 
@@ -136,6 +136,19 @@ matches), in config.py, .env.example, render.yaml and the README.
 Also fixed: Halve It rows in the scoring page's Recent visits showed
 x01-style "0 (0 → 0)"; they now show "+N" or "HALVED".
 
+**2026-09-18 casual Cricket bots:** the bots played Cricket as a rigid
+march, highest open number every dart and the bull last, so every leg
+went 20, 19, 18, 17, 16, 15, Bull and felt robotic. Race-to-close has
+no points, so the order gains nothing. `choose_cricket_aim` in
+app/scoring/bot.py now picks any open target at random, stays on it
+for the visit until it closes, and re-picks each visit; numbers still
+aim at the triple and the bull at the inner ring. Simulated average
+visits to close the board are unchanged at every difficulty (noob ~21,
+easy ~13, medium ~9, hard ~7, pro ~6), so the bots are as beatable as
+before, just less predictable. README and the unit tests updated
+(six Cricket aiming tests replace the highest-first one). Commit
+560c5ec.
+
 ## Security hardening (complete, 2026-09-09)
 
 Reviewed auth, config, access rules, error handling, and the API
@@ -260,7 +273,6 @@ the dashboard resume row.
 
 ## Next up
 
-- Tag v0.1.0 and make the repository public.
 - Later (V1): refresh tokens + revocation, Elo, 301, leagues, trend
   charts, player comparison, bot darts animating in one at a time.
 
