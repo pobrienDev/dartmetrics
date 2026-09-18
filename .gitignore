@@ -22,3 +22,6 @@ frontend/playwright-report/
 .idea/
 Thumbs.db
 .DS_Store
+
+# Personal interview notes
+docs/INTERVIEW_STUDY_GUIDE.md
