@@ -145,14 +145,15 @@ matches appear in history and statistics like any other.
 
 The bot engine (`app/scoring/bot.py`) is pure: it chooses a sensible
 aim (T20 while scoring, the right double or a setup shot when a
-finish is on, the highest open Cricket target, the current Halve It
-round's target) and then simulates where the dart lands from the
-difficulty's accuracy table. Missed triples mostly drop into the big
-single; wilder misses stray into neighbouring segments, landing in
-the neighbour's ring only about as often as the bot hits the ring it
-aimed at; the worst bots sometimes miss the board. Aiming at T20, the
-bots average about 32, 47, 63, 81 and 100 per three darts
-respectively.
+finish is on, the current Halve It round's target; in Cricket it
+plays casual free-for-all, picking any open target at random rather
+than marching from 20 down to the bull) and then simulates where the
+dart lands from the difficulty's accuracy table. Missed triples
+mostly drop into the big single; wilder misses stray into
+neighbouring segments, landing in the neighbour's ring only about as
+often as the bot hits the ring it aimed at; the worst bots sometimes
+miss the board. Aiming at T20, the bots average about 32, 47, 63, 81
+and 100 per three darts respectively.
 
 Bot visits are recorded through the same turn service as human ones
 (`POST /api/v1/matches/{id}/bot-visit`, called by the scoring screen

@@ -5,6 +5,7 @@ import random
 import pytest
 
 from app.players.models import BotDifficulty
+from app.scoring import bot as bot_module
 from app.scoring.bot import (
     ACCURACY,
     Aim,
@@ -16,7 +17,7 @@ from app.scoring.bot import (
     throw,
     x01_visit,
 )
-from app.scoring.cricket import initial_marks
+from app.scoring.cricket import CRICKET_TARGETS, MARKS_TO_CLOSE, initial_marks
 from app.scoring.domain import BULL_SEGMENT, DartInput, Multiplier, triple
 from app.scoring.engine import apply_dart
 from app.scoring.halve_it import HalveItRound
@@ -171,14 +172,73 @@ def test_pro_bot_finishes_legs_and_noob_takes_longer():
 # --- Cricket -----------------------------------------------------------------
 
 
-def test_cricket_aims_highest_open_target_then_bull():
+def test_cricket_is_free_for_all_over_every_open_target():
+    """Race-to-close has no points, so the bot plays casual Cricket:
+    any open target can come up, not a march from 20 down to the bull."""
+    rng = random.Random(1)
+    aimed = {choose_cricket_aim(initial_marks(), rng).segment for _ in range(300)}
+    assert aimed == set(CRICKET_TARGETS)
+
+
+def test_cricket_never_aims_at_a_closed_target():
     marks = initial_marks()
-    assert choose_cricket_aim(marks) == Aim(20, Multiplier.TRIPLE)
-    marks[20] = 3
-    assert choose_cricket_aim(marks) == Aim(19, Multiplier.TRIPLE)
-    for t in (15, 16, 17, 18, 19):
-        marks[t] = 3
-    assert choose_cricket_aim(marks) == Aim(BULL_SEGMENT, Multiplier.DOUBLE)
+    for t in (20, 17, BULL_SEGMENT):
+        marks[t] = MARKS_TO_CLOSE
+    rng = random.Random(2)
+    for _ in range(300):
+        aim = choose_cricket_aim(marks, rng)
+        assert marks[aim.segment] < MARKS_TO_CLOSE
+    for t in (15, 16, 18, 19):
+        marks[t] = MARKS_TO_CLOSE
+    assert choose_cricket_aim(marks, rng) == Aim(20, Multiplier.TRIPLE)  # board closed
+
+
+def test_cricket_aims_at_the_triple_and_the_inner_bull():
+    marks = initial_marks()
+    rng = random.Random(3)
+    for target in CRICKET_TARGETS:
+        aim = choose_cricket_aim(marks, rng, current=target)
+        assert aim.segment == target
+        expected = Multiplier.DOUBLE if target == BULL_SEGMENT else Multiplier.TRIPLE
+        assert aim.multiplier is expected
+
+
+def test_cricket_keeps_its_target_until_it_closes():
+    marks = initial_marks()
+    rng = random.Random(4)
+    marks[17] = 2
+    assert choose_cricket_aim(marks, rng, current=17) == Aim(17, Multiplier.TRIPLE)
+    marks[17] = MARKS_TO_CLOSE
+    assert choose_cricket_aim(marks, rng, current=17).segment != 17
+
+
+def test_cricket_visit_stays_on_one_number_while_it_is_open(monkeypatch):
+    aims: list[Aim] = []
+
+    def one_mark(aim, accuracy, rng):
+        aims.append(aim)
+        return DartInput(segment=aim.segment, multiplier=Multiplier.SINGLE)
+
+    monkeypatch.setattr(bot_module, "throw", one_mark)
+    darts = cricket_visit(initial_marks(), ACCURACY[BotDifficulty.MEDIUM], random.Random(5))
+    assert len(darts) == 3
+    assert len({aim.segment for aim in aims}) == 1
+
+
+def test_cricket_visit_moves_on_after_closing_a_number(monkeypatch):
+    aims: list[Aim] = []
+
+    def closes_it(aim, accuracy, rng):
+        aims.append(aim)
+        multiplier = Multiplier.DOUBLE if aim.segment == BULL_SEGMENT else Multiplier.TRIPLE
+        return DartInput(segment=aim.segment, multiplier=multiplier)
+
+    monkeypatch.setattr(bot_module, "throw", closes_it)
+    marks = initial_marks()
+    marks[BULL_SEGMENT] = 1  # one inner bull closes it too
+    darts = cricket_visit(marks, ACCURACY[BotDifficulty.PRO], random.Random(6))
+    assert len(darts) == 3
+    assert len({aim.segment for aim in aims}) == 3
 
 
 def test_cricket_visit_stops_after_closing_the_board():

@@ -8,10 +8,12 @@ engines, constraints, and statistics as everything else.
 
 Two layers:
 
-1. Aiming (deterministic): where a sensible player would aim next in
-   this situation — T20 while scoring, the right double when a finish
-   is on, a setup shot that leaves a good double, the highest open
-   Cricket target, the current Halve It round's target.
+1. Aiming: where a sensible player would aim next in this situation —
+   T20 while scoring, the right double when a finish is on, a setup
+   shot that leaves a good double, the current Halve It round's
+   target. Cricket is the casual exception: race-to-close has no
+   points, so the bot picks any open target at random instead of
+   marching from 20 down to the bull.
 2. Throwing (random): where the dart actually lands, driven by the
    difficulty's accuracy. A missed triple usually drops into the big
    single of the same segment; wilder misses wander into the
@@ -230,15 +232,31 @@ def x01_visit(remaining: int, accuracy: Accuracy, rng: random.Random) -> list[Da
 # --- Cricket ---------------------------------------------------------------
 
 
-def choose_cricket_aim(marks: dict[int, int]) -> Aim:
-    """Highest open number first, the bull last (it needs the inner ring)."""
-    numbers = sorted((t for t in CRICKET_TARGETS if t != BULL_SEGMENT), reverse=True)
-    for target in numbers:
-        if marks[target] < MARKS_TO_CLOSE:
-            return Aim(target, Multiplier.TRIPLE)
-    if marks[BULL_SEGMENT] < MARKS_TO_CLOSE:
-        return Aim(BULL_SEGMENT, Multiplier.DOUBLE)
-    return Aim(20, Multiplier.TRIPLE)  # board closed; unreachable in play
+def open_cricket_targets(marks: dict[int, int]) -> list[int]:
+    return [target for target in CRICKET_TARGETS if marks[target] < MARKS_TO_CLOSE]
+
+
+def choose_cricket_aim(
+    marks: dict[int, int], rng: random.Random, current: int | None = None
+) -> Aim:
+    """Free-for-all Cricket: any open target, picked at random.
+
+    Race-to-close has no points, so nothing is gained by the classic
+    20-down-to-the-bull march, and a casual bot that spreads its darts
+    around the board is nicer to play against. `current` is the target
+    the bot was already throwing at this visit: it stays on that one
+    until it closes, like a player who sticks with a number for the
+    visit rather than switching after every dart. Each new visit
+    starts with a fresh pick.
+    """
+    if current is None or marks[current] >= MARKS_TO_CLOSE:
+        open_targets = open_cricket_targets(marks)
+        if not open_targets:
+            return Aim(20, Multiplier.TRIPLE)  # board closed; unreachable in play
+        current = rng.choice(open_targets)
+    if current == BULL_SEGMENT:
+        return Aim(BULL_SEGMENT, Multiplier.DOUBLE)  # the inner bull is two marks
+    return Aim(current, Multiplier.TRIPLE)
 
 
 def cricket_visit(
@@ -246,8 +264,11 @@ def cricket_visit(
 ) -> list[DartInput]:
     darts: list[DartInput] = []
     current = dict(marks)
+    target: int | None = None
     for _ in range(3):
-        dart = throw(choose_cricket_aim(current), accuracy, rng)
+        aim = choose_cricket_aim(current, rng, target)
+        target = aim.segment
+        dart = throw(aim, accuracy, rng)
         darts.append(dart)
         result = apply_cricket_dart(current, dart)
         current = result.marks
