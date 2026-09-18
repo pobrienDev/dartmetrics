@@ -3,7 +3,7 @@
 > Living document: where the project stands, key decisions, and what
 > comes next. Update at the end of significant work sessions.
 
-**Last updated:** 2026-09-18 (casual Cricket bots, noob retune)
+**Last updated:** 2026-09-18 (casual Cricket bots, noob and easy retune)
 
 ## Where things stand
 
@@ -161,6 +161,15 @@ difficulty picker's hint is now "~25 avg"), segment hit rate 26%,
 400-dart bound), Cricket board ~30 visits, Halve It median 2 from
 40. Easy and up untouched, so the noob→easy step is now 24→47; bring
 easy down to ~40 if that gap plays badly.
+
+**2026-09-18 easy retune:** easy brought down as well, to narrow that
+step: triple 0.08, double 0.10, single 0.42, inner/outer bull
+0.05/0.16, band 0.53, board miss 0.07, scatter 0.58 (was 0.11/0.14/
+0.46/0.06/0.20/0.55/0.05/0.53). Simulated: T20 average 40 (hint now
+"~40 avg"), segment hit rate 44%, plain-single rate 39%, 501 leg ~20
+visits (was ~16), Cricket board ~16 visits (was ~13), Halve It median
+17 from 40 (was 24; ends on or below 40 in 77% of games). The ladder
+is now 24 / 40 / 63 / 81 / 100; medium and up untouched.
 
 ## Security hardening (complete, 2026-09-09)
 

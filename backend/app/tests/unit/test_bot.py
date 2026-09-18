@@ -38,7 +38,7 @@ def test_scoring_average_increases_with_difficulty(difficulty):
     rng = random.Random(42)
     darts = [throw(Aim(20, Multiplier.TRIPLE), ACCURACY[difficulty], rng) for _ in range(6000)]
     per_visit = sum(d.score for d in darts) / len(darts) * 3
-    expected = {"noob": 24, "easy": 47, "medium": 63, "hard": 81, "pro": 100}[difficulty]
+    expected = {"noob": 24, "easy": 40, "medium": 63, "hard": 81, "pro": 100}[difficulty]
     assert abs(per_visit - expected) < 6
 
 

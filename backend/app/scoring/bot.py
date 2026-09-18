@@ -20,15 +20,15 @@ Two layers:
    neighbouring segments; the worst players miss the board entirely.
 
 Difficulties are ordered noob < easy < medium < hard < pro. Their
-accuracies were tuned so a bot aiming at T20 averages roughly 24, 47,
+accuracies were tuned so a bot aiming at T20 averages roughly 24, 40,
 63, 81, and 100 per three darts respectively. The noob is a genuine
 beginner: it hits the segment it aims at about a quarter of the time,
-misses the board one dart in five, and rarely finds a double. The
-plain-single rates are not pinned by that tuning (scoring visits aim
-at the triple), so they follow a throw-scatter model instead: a
-~47-average thrower hits the big single they aim at about 45% of the
-time, a ~24-average one under 30%. Halve It's band rounds run
-entirely on those rates.
+misses the board one dart in five, and rarely finds a double; easy is
+an occasional pub player. The plain-single rates are not pinned by
+that tuning (scoring visits aim at the triple), so they follow a
+throw-scatter model instead: a ~40-average thrower hits the big
+single they aim at about 40% of the time, a ~24-average one about
+22%. Halve It's band rounds run entirely on those rates.
 """
 
 import random
@@ -68,7 +68,7 @@ class Accuracy:
 
 ACCURACY: dict[BotDifficulty, Accuracy] = {
     BotDifficulty.NOOB: Accuracy(0.03, 0.05, 0.28, 0.02, 0.08, 0.50, 0.20, 0.70),
-    BotDifficulty.EASY: Accuracy(0.11, 0.14, 0.46, 0.06, 0.20, 0.55, 0.05, 0.53),
+    BotDifficulty.EASY: Accuracy(0.08, 0.10, 0.42, 0.05, 0.16, 0.53, 0.07, 0.58),
     BotDifficulty.MEDIUM: Accuracy(0.17, 0.22, 0.75, 0.15, 0.30, 0.70, 0.02, 0.45),
     BotDifficulty.HARD: Accuracy(0.27, 0.35, 0.85, 0.25, 0.38, 0.80, 0.01, 0.35),
     BotDifficulty.PRO: Accuracy(0.40, 0.48, 0.93, 0.38, 0.42, 0.88, 0.00, 0.30),
