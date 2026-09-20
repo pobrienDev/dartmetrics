@@ -9,7 +9,6 @@ difficulty, so bot statistics and head-to-head records accumulate
 like any other player's.
 """
 
-import enum
 import uuid
 from datetime import datetime
 
@@ -18,15 +17,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
 
-
-class BotDifficulty(enum.StrEnum):
-    """Ordered easiest to hardest."""
-
-    NOOB = "noob"
-    EASY = "easy"
-    MEDIUM = "medium"
-    HARD = "hard"
-    PRO = "pro"
+# Defined with the bot engine so the scoring package stays framework-free;
+# re-exported here because the Player model and its callers use it.
+from app.scoring.bot import BotDifficulty
 
 
 class Player(Base):
