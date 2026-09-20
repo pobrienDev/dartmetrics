@@ -31,10 +31,10 @@ single they aim at about 40% of the time, a ~24-average one about
 22%. Halve It's band rounds run entirely on those rates.
 """
 
+import enum
 import random
 from dataclasses import dataclass
 
-from app.players.models import BotDifficulty
 from app.scoring.cricket import CRICKET_TARGETS, MARKS_TO_CLOSE, apply_cricket_dart
 from app.scoring.domain import BULL_SEGMENT, DartInput, Multiplier
 from app.scoring.engine import apply_dart
@@ -46,6 +46,21 @@ from app.scoring.halve_it import (
     HalveItRound,
     round_for_number,
 )
+
+
+class BotDifficulty(enum.StrEnum):
+    """Ordered easiest to hardest.
+
+    Lives here, with the bot it configures, so the scoring package imports
+    nothing outside itself. The players table stores the value as a plain
+    string, and app.players.models re-exports the name for the ORM layer.
+    """
+
+    NOOB = "noob"
+    EASY = "easy"
+    MEDIUM = "medium"
+    HARD = "hard"
+    PRO = "pro"
 
 # Clockwise segment order around a standard board, used to find the
 # neighbours a stray dart lands in.

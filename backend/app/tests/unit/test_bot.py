@@ -4,9 +4,9 @@ import random
 
 import pytest
 
-from app.players.models import BotDifficulty
 from app.scoring import bot as bot_module
 from app.scoring.bot import (
+    BotDifficulty,
     ACCURACY,
     Aim,
     choose_cricket_aim,
