@@ -227,7 +227,7 @@ cd backend
 python -m venv .venv
 .venv/bin/pip install -e . --group dev      # Windows: .venv\Scripts\pip ...
 .venv/bin/alembic upgrade head
-.venv/bin/pytest                            # 255 tests; integration tests skip without PostgreSQL
+.venv/bin/pytest                            # 259 tests; integration tests skip without PostgreSQL
 .venv/bin/uvicorn app.main:app --reload     # http://localhost:8000, docs at /docs
 
 # 4. Frontend (second terminal)
