@@ -25,9 +25,18 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # Install dependencies first so source edits don't invalidate this layer.
+# Only pyproject.toml is in the image at this point, so Docker reuses the
+# layer until the dependency list itself changes. The list is read straight
+# from pyproject.toml, which stays the single source of truth.
 COPY backend/pyproject.toml ./
+RUN python -c "import tomllib; print('\n'.join(tomllib.load(open('pyproject.toml', 'rb'))['project']['dependencies']))" > /tmp/requirements.txt \
+    && pip install -r /tmp/requirements.txt \
+    && rm /tmp/requirements.txt
+
+# The application itself. Its dependencies are already installed, so this
+# layer is small and quick to rebuild after a source edit.
 COPY backend/app ./app
-RUN pip install .
+RUN pip install --no-deps .
 
 COPY backend/alembic.ini ./
 COPY backend/alembic ./alembic
