@@ -1,32 +1,25 @@
-# React + TypeScript + Vite
+# DartMetrics frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+The React 19 + TypeScript single-page app for DartMetrics: sign in,
+start a match against a guest or a bot, score it dart by dart (501,
+Cricket, Halve It), and read the statistics the API derives from the
+raw throws.
 
-Currently, two official plugins are available:
+Everything you need to run it is in the [root README](../README.md)
+("Local development"): the Vite dev server proxies `/api` to the
+FastAPI backend on port 8000.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm ci          # Node 22.22+ or 24.15+
+npm run dev     # http://localhost:5173
+npm test        # Vitest + Testing Library
+npm run lint    # oxlint
+npm run build   # tsc -b && vite build -> dist/, which the API container serves
+npx playwright test   # end-to-end, needs both servers (or lets Playwright start them)
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Layout: `src/pages` (one component per route), `src/api` (typed fetch
+wrapper and response types mirroring the backend schemas), `src/auth`
+(token storage and the protected-route guard), `src/utils` (the few
+scoring rules the UI mirrors to know when a visit is complete; the
+server remains the judge), `e2e` (Playwright).
