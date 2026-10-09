@@ -162,3 +162,35 @@ def test_frontend_serving_never_escapes_the_build_directory(app_with_env, fronte
     response = client.get("/../pyproject.toml")
     assert response.status_code == 200
     assert 'id=root' in response.text  # fell back to the app shell
+
+
+# --- Security headers ------------------------------------------------------
+
+
+def test_every_response_carries_the_security_headers(app_with_env, frontend_build):
+    """The token sits in localStorage, so the CSP is the safety net
+    against an injected script; the API serves the SPA, so it sends it."""
+    client = TestClient(app_with_env(STATIC_DIR=str(frontend_build)))
+
+    for path in ("/", "/matches/1234", "/api/v1/health", "/api/v1/does-not-exist"):
+        response = client.get(path)
+        csp = response.headers["content-security-policy"]
+        assert "default-src 'self'" in csp, path
+        assert "script-src 'self'" in csp
+        assert "style-src 'self' https://fonts.googleapis.com" in csp
+        assert "font-src 'self' https://fonts.gstatic.com" in csp
+        assert "frame-ancestors 'none'" in csp
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert response.headers["x-frame-options"] == "DENY"
+        assert response.headers["referrer-policy"] == "strict-origin-when-cross-origin"
+
+
+def test_api_docs_are_exempt_from_the_csp_only(app_with_env):
+    """Swagger UI loads from a CDN with inline scripts, so a CSP would
+    blank the page; the other headers still apply."""
+    client = TestClient(app_with_env())
+    for path in ("/docs", "/redoc"):
+        response = client.get(path)
+        assert response.status_code == 200, path
+        assert "content-security-policy" not in response.headers
+        assert response.headers["x-content-type-options"] == "nosniff"

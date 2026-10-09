@@ -216,15 +216,21 @@ re-enter.
   member never shows up in another account's list.
 - **The access token is kept in `localStorage`.** That makes it readable
   by any script injected into the page. React escapes all rendered
-  values and the app never renders raw HTML, and the token expires after
-  8 hours. Moving to an HttpOnly cookie is planned for V1 alongside
-  refresh tokens, since it also needs CSRF protection.
+  values and the app never renders raw HTML, the token expires after
+  8 hours, and every response carries a Content-Security-Policy that
+  allows scripts from the app's own origin only (styles and fonts also
+  from Google Fonts), plus `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY` / `frame-ancestors 'none'` and a
+  Referrer-Policy (`app/common/headers.py`; `/docs` is exempt from the
+  CSP because Swagger UI loads from a CDN). Moving to an HttpOnly
+  cookie is planned for V1 alongside refresh tokens, since it also
+  needs CSRF protection.
 - **The OpenAPI docs (`/docs`) are public on purpose** — the API surface
   is documented, not secret, and every route needs a valid token.
 - **Behind a reverse proxy**, run uvicorn with `--proxy-headers` and
   `--forwarded-allow-ips` so the rate limiter sees real client
-  addresses. TLS termination and security headers (HSTS etc.) belong to
-  that proxy layer.
+  addresses. TLS termination and HSTS belong to that proxy layer; the
+  other security headers come from the app itself (above).
 
 ## Local development
 

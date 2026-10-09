@@ -21,6 +21,7 @@ from app.matches.router import router as matches_router
 from app.players.router import router as players_router
 from app.statistics.router import router as statistics_router
 from app.common.errors import DomainError
+from app.common.headers import SecurityHeadersMiddleware
 from app.common.ratelimit import limiter
 from app.config import get_settings
 from app.db import get_db
@@ -39,6 +40,9 @@ def create_app() -> FastAPI:
     # limits (see app/auth/router.py).
     limiter.enabled = settings.rate_limit_enabled
     app.state.limiter = limiter
+
+    # CSP and friends on every response (see app/common/headers.py).
+    app.add_middleware(SecurityHeadersMiddleware)
 
     if settings.cors_origin_list:
         app.add_middleware(
