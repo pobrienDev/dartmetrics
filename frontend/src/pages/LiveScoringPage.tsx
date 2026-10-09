@@ -330,7 +330,7 @@ export function LiveScoringPage() {
   return (
     <div className="min-h-screen bg-ink-950">
       <header className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3 sm:px-6">
-        <Link to="/" className="btn-ghost -ml-2 px-2 py-1 text-sm">
+        <Link to="/" className="btn-ghost -ml-2 min-h-11 px-2 py-1 text-sm">
           ← Dashboard
         </Link>
         <span className="flex items-center gap-2 text-sm text-ink-400">
@@ -343,7 +343,7 @@ export function LiveScoringPage() {
             <button
               onClick={() => setConfirmAbandon(true)}
               disabled={confirmAbandon || abandonMatch.isPending}
-              className="btn-ghost px-2 py-1 text-sm"
+              className="btn-ghost min-h-11 px-2 py-1 text-sm"
             >
               Abandon match
             </button>
@@ -362,11 +362,11 @@ export function LiveScoringPage() {
             <button
               onClick={() => abandonMatch.mutate()}
               disabled={abandonMatch.isPending}
-              className="btn-primary px-3 py-2 text-sm"
+              className="btn-primary min-h-11 px-3 py-2 text-sm"
             >
               {abandonMatch.isPending ? 'Ending…' : 'Yes, abandon'}
             </button>
-            <button onClick={() => setConfirmAbandon(false)} className="btn-secondary px-3 py-2 text-sm">
+            <button onClick={() => setConfirmAbandon(false)} className="btn-secondary min-h-11 px-3 py-2 text-sm">
               Keep playing
             </button>
           </span>
@@ -518,7 +518,7 @@ export function LiveScoringPage() {
             {botVisit.isError && (
               <button
                 onClick={() => setBotAttempt((n) => n + 1)}
-                className="btn-primary px-3 py-2.5 text-sm"
+                className="btn-primary min-h-11 px-3 py-2.5 text-sm"
               >
                 Try again
               </button>
@@ -526,7 +526,7 @@ export function LiveScoringPage() {
             <button
               onClick={() => undoVisit.mutate()}
               disabled={undoVisit.isPending || botVisit.isPending}
-              className="btn-secondary px-3 py-2.5 text-sm"
+              className="btn-secondary min-h-11 px-3 py-2.5 text-sm"
             >
               Undo my last visit
             </button>
@@ -557,7 +557,7 @@ export function LiveScoringPage() {
               <button
                 onClick={() => setDarts(darts.slice(0, -1))}
                 disabled={darts.length === 0}
-                className="btn-secondary px-3 py-2.5 text-sm"
+                className="btn-secondary min-h-11 px-3 py-2.5 text-sm"
               >
                 ⌫ Dart
               </button>
@@ -566,7 +566,7 @@ export function LiveScoringPage() {
                 // Not while a visit is being submitted: the undo would
                 // race it on the server and remove the previous visit.
                 disabled={undoVisit.isPending || submitVisit.isPending}
-                className="btn-secondary px-3 py-2.5 text-sm"
+                className="btn-secondary min-h-11 px-3 py-2.5 text-sm"
               >
                 Undo visit
               </button>
@@ -603,7 +603,7 @@ export function LiveScoringPage() {
                 <button
                   key={b}
                   onClick={() => setBand(b)}
-                  className={`rounded-xl py-2.5 text-xs font-bold uppercase tracking-wider transition ${
+                  className={`min-h-11 rounded-xl py-2.5 text-xs font-bold uppercase tracking-wider transition ${
                     band === b ? 'bg-sky-600 text-white' : 'bg-ink-800 text-ink-300 hover:bg-ink-700'
                   }`}
                 >
@@ -614,7 +614,9 @@ export function LiveScoringPage() {
           )}
 
           {/* Number pad: 5 columns on phones keeps every key at a
-              comfortable thumb size; 7 columns from tablet up. */}
+              comfortable thumb size; 7 columns from tablet up. Every
+              control on this screen is at least 44px tall: min-h-11 on
+              the smaller buttons, more on the pad and multiplier row. */}
           <div className="grid grid-cols-5 gap-2 sm:grid-cols-7">
             {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => (
               <button

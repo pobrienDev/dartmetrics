@@ -480,3 +480,18 @@ describe('LiveScoringPage Cricket, bot turn and undo', () => {
     expect(screen.queryByText('Recent visits')).not.toBeInTheDocument()
   })
 })
+
+describe('LiveScoringPage touch targets', () => {
+  it('gives every small control the 44px minimum height', async () => {
+    stubApi(halveItState({ mine: 40 }), () => {
+      throw new Error('no visit expected')
+    })
+    renderPage()
+    await screen.findAllByText('40')
+
+    for (const name of ['← Dashboard', 'Abandon match', '⌫ Dart', 'Undo visit', 'outer single band', 'inner single band']) {
+      const control = screen.getByRole(name === '← Dashboard' ? 'link' : 'button', { name })
+      expect(control.className, name).toContain('min-h-11')
+    }
+  })
+})
