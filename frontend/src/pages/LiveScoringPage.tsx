@@ -197,6 +197,10 @@ export function LiveScoringPage() {
     onError: (err) => {
       setDarts([])
       show(err instanceof ApiError ? err.message : 'Something went wrong.', 'bust')
+      // Whatever went wrong, the board on the server is the truth:
+      // NOT_PLAYER_TURN or CONFLICT means it moved on, so resync
+      // rather than let the darts be re-entered against stale state.
+      queryClient.invalidateQueries({ queryKey: ['match', matchId] })
     },
   })
 
@@ -206,19 +210,22 @@ export function LiveScoringPage() {
     onSuccess: (response) =>
       applyVisit(response, response.darts, activePlayer ? shortName(activePlayer) : 'Bot'),
     onError: (err) => {
-      // NOT_BOT_TURN just means the board moved on; a refetch resyncs.
-      if (err instanceof ApiError && err.code === 'NOT_BOT_TURN') {
-        queryClient.invalidateQueries({ queryKey: ['match', matchId] })
-        return
-      }
+      // Resync on any failure. NOT_BOT_TURN just means the board moved
+      // on; anything else (a network blip, a 5xx, a CONFLICT) leaves
+      // the bot waiting for the "Try again" button below, since the
+      // effect only re-runs when the board or the attempt changes.
+      queryClient.invalidateQueries({ queryKey: ['match', matchId] })
+      if (err instanceof ApiError && err.code === 'NOT_BOT_TURN') return
       show(err instanceof ApiError ? err.message : 'Something went wrong.', 'bust')
     },
   })
 
   // Let the bot throw after a beat whenever it is up. The ref stops a
   // second request while one is in flight (state updates re-run the
-  // effect before the mutation's pending flag flips).
+  // effect before the mutation's pending flag flips). botAttempt is the
+  // manual retry path after a failed bot visit.
   const botRequestInFlight = useRef(false)
+  const [botAttempt, setBotAttempt] = useState(0)
   useEffect(() => {
     if (!botIsUp || botRequestInFlight.current) return
     const timer = setTimeout(() => {
@@ -232,7 +239,7 @@ export function LiveScoringPage() {
     return () => clearTimeout(timer)
     // botVisit is a stable mutation handle; only the board matters here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [botIsUp, state])
+  }, [botIsUp, state, botAttempt])
 
   const undoVisit = useMutation({
     mutationFn: () =>
@@ -454,9 +461,19 @@ export function LiveScoringPage() {
           <p role="status" className="py-10 text-center text-xl text-ink-300">
             {botVisit.isPending
               ? `${activePlayer ? shortName(activePlayer) : 'Bot'} is throwing…`
-              : `${activePlayer ? shortName(activePlayer) : 'Bot'} is stepping up…`}
+              : botVisit.isError
+                ? `${activePlayer ? shortName(activePlayer) : 'Bot'} could not throw.`
+                : `${activePlayer ? shortName(activePlayer) : 'Bot'} is stepping up…`}
           </p>
-          <div className="flex justify-center">
+          <div className="flex justify-center gap-2">
+            {botVisit.isError && (
+              <button
+                onClick={() => setBotAttempt((n) => n + 1)}
+                className="btn-primary px-3 py-2.5 text-sm"
+              >
+                Try again
+              </button>
+            )}
             <button
               onClick={() => undoVisit.mutate()}
               disabled={undoVisit.isPending || botVisit.isPending}

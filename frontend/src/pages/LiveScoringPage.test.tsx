@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -225,5 +225,88 @@ describe('LiveScoringPage Halve It feedback', () => {
     expect(row).toHaveTextContent('HALVED')
     expect(row).toHaveTextContent('(40 → 20)')
     expect(row).not.toHaveTextContent('+0')
+  })
+})
+
+describe('LiveScoringPage resync after failures', () => {
+  function botState(active = RIVAL): MatchState {
+    const base = x01State({ active })
+    return {
+      ...base,
+      players: base.players.map((p) =>
+        p.player_id === RIVAL ? { ...p, display_name: 'Pro Bot', bot_difficulty: 'pro' } : p,
+      ),
+    }
+  }
+
+  /** Route by URL; count the GETs of the match and let a test script the bot replies. */
+  function stubRoutes(initial: MatchState, botReplies: Array<() => { body: unknown; status: number }>) {
+    const calls = { matchGets: 0, botPosts: 0, visitPosts: 0 }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        const method = init?.method ?? 'GET'
+        if (url === '/api/v1/matches/match-1' && method === 'GET') {
+          calls.matchGets += 1
+          return Promise.resolve(jsonResponse(initial))
+        }
+        if (url === '/api/v1/matches/match-1/visits' && method === 'POST') {
+          calls.visitPosts += 1
+          return Promise.resolve(
+            jsonResponse({ error: { code: 'NOT_PLAYER_TURN', message: 'It is not your turn.' } }, 409),
+          )
+        }
+        if (url === '/api/v1/matches/match-1/bot-visit' && method === 'POST') {
+          const reply = botReplies[Math.min(calls.botPosts, botReplies.length - 1)]()
+          calls.botPosts += 1
+          return Promise.resolve(jsonResponse(reply.body, reply.status))
+        }
+        return Promise.resolve(jsonResponse({ error: { code: 'NOT_FOUND', message: url } }, 404))
+      }),
+    )
+    return calls
+  }
+
+  it('refetches the match when a visit is rejected', async () => {
+    const calls = stubRoutes(x01State({ mine: 40 }), [])
+    renderPage()
+    const user = userEvent.setup()
+
+    await screen.findByText('40')
+    expect(calls.matchGets).toBe(1)
+    await user.click(screen.getByRole('button', { name: '20' }))
+    await user.click(screen.getByRole('button', { name: '20' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent('It is not your turn.')
+    await waitFor(() => expect(calls.matchGets).toBe(2))
+    expect(calls.visitPosts).toBe(1)
+  })
+
+  it('offers a retry when the bot cannot throw, instead of waiting forever', async () => {
+    const calls = stubRoutes(botState(), [
+      () => ({ body: { error: { code: 'INTERNAL', message: 'boom' } }, status: 500 }),
+      () => ({
+        body: {
+          turn: { id: 'turn-2', player_id: RIVAL, turn_number: 1, turn_start_score: 501, turn_end_score: 441, points_scored: 60, is_bust: false, is_checkout: false },
+          state: x01State({ theirs: 441, active: ME }),
+          darts: [{ segment: 20, multiplier: 'single' }, { segment: 20, multiplier: 'single' }, { segment: 20, multiplier: 'single' }],
+        },
+        status: 201,
+      }),
+    ])
+    renderPage()
+    const user = userEvent.setup()
+
+    // The bot throws after its 1.2 s beat and fails; the page resyncs and offers a retry.
+    const retry = await screen.findByRole('button', { name: 'Try again' }, { timeout: 4000 })
+    expect(calls.botPosts).toBe(1)
+    await waitFor(() => expect(calls.matchGets).toBe(2))
+    // Two live regions here: the banner and the bot's own line.
+    expect(screen.getAllByRole('status').map((el) => el.textContent).join(' ')).toContain('boom')
+
+    await user.click(retry)
+    await waitFor(() => expect(calls.botPosts).toBe(2), { timeout: 4000 })
+    expect(await screen.findByText('441')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument()
   })
 })
