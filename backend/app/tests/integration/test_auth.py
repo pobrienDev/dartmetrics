@@ -116,6 +116,26 @@ def test_me_returns_authenticated_user(client):
     assert response.json()["email"] == "pat@example.com"
 
 
+def test_me_carries_the_users_player_id_once_a_profile_exists(client):
+    """The dashboard finds its own stats through this field; scanning the
+    paginated player list stopped working past 50 players."""
+    _, headers = register_and_login(client)
+    assert client.get("/api/v1/me", headers=headers).json()["player_id"] is None
+
+    # A guest is not the user's profile and must not be reported as one.
+    client.post(
+        "/api/v1/players",
+        json={"display_name": "Guest Gary", "is_guest": True},
+        headers=headers,
+    )
+    assert client.get("/api/v1/me", headers=headers).json()["player_id"] is None
+
+    own = client.post(
+        "/api/v1/players", json={"display_name": "Patrick"}, headers=headers
+    ).json()
+    assert client.get("/api/v1/me", headers=headers).json()["player_id"] == own["id"]
+
+
 @pytest.mark.parametrize(
     "headers",
     [

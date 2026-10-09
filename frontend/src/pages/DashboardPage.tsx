@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 
 import { api } from '../api/client'
-import type { MatchListResponse, PlayerResponse, PlayerStats } from '../api/types'
+import type { MatchListResponse, PlayerStats, UserResponse } from '../api/types'
 import { useAuth } from '../auth/useAuth'
 import { AppHeader } from '../components/AppHeader'
 import { GAME_LABELS } from '../utils/games'
@@ -17,16 +17,19 @@ export function DashboardPage() {
     queryFn: () => api<MatchListResponse>('/api/v1/matches?status=in_progress'),
   })
 
-  // The user's own player profile (if created), then their career stats.
-  const players = useQuery({
-    queryKey: ['players'],
-    queryFn: () => api<PlayerResponse[]>('/api/v1/players'),
+  // The user's own player profile id comes from /me, refetched on every
+  // visit so a profile created since sign-in (NewMatchPage makes it
+  // lazily) is picked up. The player list is paginated and sorted by
+  // name, so scanning it for ourselves stopped working past 50 players.
+  const me = useQuery({
+    queryKey: ['me'],
+    queryFn: () => api<UserResponse>('/api/v1/me'),
   })
-  const myPlayer = players.data?.find((p) => p.user_id === user?.id)
+  const myPlayerId = me.data?.player_id ?? null
   const stats = useQuery({
-    queryKey: ['stats', myPlayer?.id],
-    queryFn: () => api<PlayerStats>(`/api/v1/players/${myPlayer!.id}/stats`),
-    enabled: myPlayer !== undefined,
+    queryKey: ['stats', myPlayerId],
+    queryFn: () => api<PlayerStats>(`/api/v1/players/${myPlayerId}/stats`),
+    enabled: myPlayerId !== null,
   })
 
   const s = stats.data
@@ -34,7 +37,7 @@ export function DashboardPage() {
   // a dart. Hidden while there is a match to resume.
   const hasOngoing = (ongoing.data?.items.length ?? 0) > 0
   const noHistory =
-    !hasOngoing && players.isSuccess && (myPlayer === undefined || (s !== undefined && s.total_darts === 0))
+    !hasOngoing && me.isSuccess && (myPlayerId === null || (s !== undefined && s.total_darts === 0))
 
   const kpis = [
     {

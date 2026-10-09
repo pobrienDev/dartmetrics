@@ -37,3 +37,7 @@ class UserResponse(BaseModel):
     display_name: str
     is_active: bool
     created_at: datetime
+    # The user's own player profile, once created (POST /players); None
+    # until then. Lets the dashboard find its stats without scanning the
+    # paginated player list.
+    player_id: uuid.UUID | None = None

@@ -6,6 +6,7 @@ export interface UserResponse {
   display_name: string
   is_active: boolean
   created_at: string
+  player_id: string | null // the user's own player profile, once created
 }
 
 export interface TokenResponse {
