@@ -27,6 +27,22 @@ function x01State(overrides: Partial<{ mine: number; theirs: number; active: str
   }
 }
 
+function halveItState(overrides: Partial<{ mine: number; theirs: number; round: number; active: string }> = {}): MatchState {
+  const { mine = 40, theirs = 40, round = 1, active = ME } = overrides
+  const base = x01State({ active })
+  return {
+    ...base,
+    game_type: 'halve_it',
+    players: base.players.map((p) => ({
+      ...p,
+      remaining_score: null,
+      score: p.player_id === ME ? mine : theirs,
+      round,
+      round_target: 'outer_black',
+    })),
+  }
+}
+
 function jsonResponse(body: unknown, status = 200) {
   return { ok: status < 400, status, json: () => Promise.resolve(body) }
 }
@@ -155,5 +171,59 @@ describe('LiveScoringPage 501 feedback', () => {
       'href',
       '/matches/match-1/summary',
     )
+  })
+})
+
+describe('LiveScoringPage Halve It feedback', () => {
+  // The server stores every Halve It turn with points_scored 0 (the
+  // running total lives in the leg state), so the recent-visits row
+  // must be judged from the total before and after the round.
+  function halveItTurn() {
+    return {
+      id: 'turn-1',
+      player_id: ME,
+      turn_number: 1,
+      turn_start_score: 0,
+      turn_end_score: 0,
+      points_scored: 0,
+      is_bust: false,
+      is_checkout: false,
+    }
+  }
+
+  it('shows +N when the round added points', async () => {
+    stubApi(halveItState({ mine: 40 }), () => ({
+      turn: halveItTurn(),
+      state: halveItState({ mine: 100, round: 2, active: RIVAL }),
+    }))
+    renderPage()
+    const user = userEvent.setup()
+
+    await screen.findAllByText('40')
+    for (let i = 0; i < 3; i++) await user.click(screen.getByRole('button', { name: '20' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent('You: +60')
+    const row = screen.getByText('Recent visits').parentElement!
+    expect(row).toHaveTextContent('+60')
+    expect(row).toHaveTextContent('(40 → 100)')
+    expect(row).not.toHaveTextContent('HALVED')
+  })
+
+  it('shows HALVED only when the total actually halved', async () => {
+    stubApi(halveItState({ mine: 40 }), () => ({
+      turn: halveItTurn(),
+      state: halveItState({ mine: 20, round: 2, active: RIVAL }),
+    }))
+    renderPage()
+    const user = userEvent.setup()
+
+    await screen.findAllByText('40')
+    for (let i = 0; i < 3; i++) await user.click(screen.getByRole('button', { name: '1' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent('You: halved! 40 → 20')
+    const row = screen.getByText('Recent visits').parentElement!
+    expect(row).toHaveTextContent('HALVED')
+    expect(row).toHaveTextContent('(40 → 20)')
+    expect(row).not.toHaveTextContent('+0')
   })
 })

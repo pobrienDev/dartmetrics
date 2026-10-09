@@ -37,6 +37,12 @@ import { GAME_CHIP, GAME_LABELS } from '../utils/games'
 interface RecentVisit {
   turn: TurnSummary
   labels: string
+  // Halve It only: the player's running total before and after the
+  // round. The server stores every Halve It turn with points_scored 0
+  // (the total lives in the leg state), so the row is rendered from
+  // these instead.
+  scoreBefore?: number | null
+  scoreAfter?: number | null
 }
 
 type Moment = 'bust' | 'oneEighty' | 'ton' | 'checkout' | null
@@ -122,9 +128,14 @@ export function LiveScoringPage() {
     const oldScore = before?.players.find(
       (p) => p.player_id === response.turn.player_id,
     )?.score
+    const newScore = response.state.players.find(
+      (p) => p.player_id === response.turn.player_id,
+    )?.score
     queryClient.setQueryData(['match', matchId], response.state)
     const labels = visitDarts.map(dartLabel).join(' ')
-    setRecentTurns((prev) => [{ turn: response.turn, labels }, ...prev].slice(0, 5))
+    setRecentTurns((prev) =>
+      [{ turn: response.turn, labels, scoreBefore: oldScore, scoreAfter: newScore }, ...prev].slice(0, 5),
+    )
     setDarts([])
     setMultiplier('single')
     const turn = response.turn
@@ -132,9 +143,6 @@ export function LiveScoringPage() {
     const threw = isYou ? 'You threw' : `${who} threw`
 
     if (response.state.game_type === 'halve_it' && !turn.is_checkout) {
-      const newScore = response.state.players.find(
-        (p) => p.player_id === turn.player_id,
-      )?.score
       if (oldScore != null && newScore != null) {
         if (newScore < oldScore) {
           celebrate('bust', turn.player_id)
@@ -586,10 +594,13 @@ function RecentVisits({
     <div className="mt-6">
       <p className="label">Recent visits</p>
       <ul className="space-y-1 text-sm">
-        {turns.map(({ turn, labels }) => {
+        {turns.map(({ turn, labels, scoreBefore, scoreAfter }) => {
           const who = state.players.find((p) => p.player_id === turn.player_id)
           // Halve It: a round either adds its qualifying points or halves.
-          const halved = isHalveIt && turn.points_scored === 0 && !turn.is_checkout
+          // Judged from the running total, not points_scored (always 0).
+          const delta =
+            isHalveIt && scoreBefore != null && scoreAfter != null ? scoreAfter - scoreBefore : null
+          const halved = delta != null && delta < 0
           const tone = turn.is_bust || halved
             ? 'text-bust-400'
             : turn.is_checkout
@@ -610,7 +621,13 @@ function RecentVisits({
                   <>
                     {labels}
                     {'  '}
-                    {halved ? 'HALVED' : `+${turn.points_scored}`}
+                    {halved ? 'HALVED' : delta != null ? `+${delta}` : ''}
+                    {scoreBefore != null && scoreAfter != null && (
+                      <>
+                        {'  '}
+                        <span className="text-ink-500">({scoreBefore} → {scoreAfter})</span>
+                      </>
+                    )}
                   </>
                 ) : (
                   <>

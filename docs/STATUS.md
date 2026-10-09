@@ -134,7 +134,11 @@ router state; LoginPage explains and returns there after sign-in.
 Token lifetime default raised 60 → 480 minutes (an evening of
 matches), in config.py, .env.example, render.yaml and the README.
 Also fixed: Halve It rows in the scoring page's Recent visits showed
-x01-style "0 (0 → 0)"; they now show "+N" or "HALVED".
+x01-style "0 (0 → 0)"; they now show "+N" or "HALVED". (Corrected
+2026-10-09: that fix judged a round from `points_scored`, which the
+server stores as 0 for every Halve It turn, so every round read
+HALVED. Rows are now judged from the running total before and after
+the round, which the page already had.)
 
 **2026-09-18 casual Cricket bots:** the bots played Cricket as a rigid
 march, highest open number every dart and the bull last, so every leg
