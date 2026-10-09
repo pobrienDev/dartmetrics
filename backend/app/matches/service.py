@@ -85,6 +85,16 @@ def create_match(
         raise PlayerNotFound(f"Player {opponent_player_id} does not exist.")
     if opponent.id == own_player.id:
         raise InvalidMatchSetup("You cannot play a match against yourself.")
+    if opponent.user_id is not None:
+        # Another account's profile needs that person's consent: whoever
+        # creates the match can enter darts for both sides, and those
+        # darts count toward the opponent's career statistics. Until an
+        # invite flow exists, opponents are guests (scored by the
+        # creator) or the shared bots.
+        raise InvalidMatchSetup(
+            "Only guests and bots can be chosen as opponents; a registered "
+            "player's statistics are their own."
+        )
 
     starter_id = starting_player_id or own_player.id
     if starter_id not in (own_player.id, opponent.id):

@@ -38,9 +38,10 @@ export function NewMatchPage() {
     queryFn: () => api<PlayerResponse[]>('/api/v1/players'),
   })
 
-  // Opponent choices: everyone except the signed-in user's own player.
-  const opponents =
-    playersQuery.data?.filter((p) => p.user_id !== user?.id) ?? []
+  // Opponent choices: guests only. A registered player's statistics are
+  // their own, so the server refuses them as opponents until an invite
+  // flow exists; bots are picked separately below.
+  const opponents = playersQuery.data?.filter((p) => p.user_id === null) ?? []
 
   const createMatch = useMutation({
     mutationFn: async () => {
@@ -175,7 +176,6 @@ export function NewMatchPage() {
                   {opponents.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.display_name}
-                      {p.user_id === null ? ' (guest)' : ''}
                     </option>
                   ))}
                 </select>

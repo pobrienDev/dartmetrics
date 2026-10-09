@@ -7,7 +7,7 @@
 <p align="center">
   <strong>Every dart, counted.</strong><br />
   501, Cricket and Halve It scored dart by dart, with the averages, checkouts
-  and 180s that fall out of the raw throws. Play a friend, a guest, or one of
+  and 180s that fall out of the raw throws. Play a guest (a friend without an account) or one of
   five bots.
 </p>
 
@@ -203,6 +203,11 @@ re-enter.
 - **Match state and summaries are private** to the creator and the
   players in the match, the same rule that governs recording visits.
   Other signed-in users get `403 MATCH_ACCESS_DENIED`.
+- **Opponents are guests or bots.** Another account's profile cannot be
+  chosen as an opponent (`400 INVALID_MATCH_SETUP`): the creator enters
+  darts for both sides and those darts count toward the opponent's
+  career statistics, so that needs their consent. An invite flow is
+  planned for V1.
 - **The access token is kept in `localStorage`.** That makes it readable
   by any script injected into the page. React escapes all rendered
   values and the app never renders raw HTML, and the token expires after

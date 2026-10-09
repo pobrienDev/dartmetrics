@@ -286,17 +286,68 @@ def test_non_participant_cannot_read_match_or_summary(client, setup):
     assert client.get(f"/api/v1/matches/{match['id']}/summary", headers=setup["headers"]).status_code == 200
 
 
-def test_participant_can_read_match_they_did_not_create(client, setup):
+def test_registered_player_cannot_be_chosen_as_opponent(client, setup):
+    """Whoever creates a match enters darts for both sides, and those
+    darts count toward the opponent's career statistics, so another
+    account's profile is refused until an invite flow exists."""
     opp_headers = signup(client, "opponent@example.com", "Opponent")
     opp_player = client.post(
         "/api/v1/players", json={"display_name": "Opponent"}, headers=opp_headers
     ).json()
-    match = client.post(
+    response = client.post(
         "/api/v1/matches",
         json={"opponent_player_id": opp_player["id"], "best_of_legs": 1},
         headers=setup["headers"],
+    )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INVALID_MATCH_SETUP"
+    assert client.get("/api/v1/matches", headers=opp_headers).json()["total"] == 0
+
+
+def legacy_match(db_session, creator_email: str, player1_id: str, player2_id: str) -> str:
+    """A match between two registered profiles, inserted directly: rows
+    like this exist from before such opponents were refused, and the
+    participant still gets to see them."""
+    from sqlalchemy import select
+
+    from app.auth.models import User
+    from app.matches.models import Leg, LegPlayerState, LegStatus, Match, MatchStatus
+
+    creator = db_session.scalar(select(User).where(User.email == creator_email))
+    match = Match(
+        created_by_user_id=creator.id,
+        player1_id=uuid.UUID(player1_id),
+        player2_id=uuid.UUID(player2_id),
+        best_of_legs=1,
+        status=MatchStatus.IN_PROGRESS,
+    )
+    db_session.add(match)
+    db_session.flush()
+    leg = Leg(
+        match_id=match.id,
+        leg_number=1,
+        starting_player_id=match.player1_id,
+        status=LegStatus.IN_PROGRESS,
+    )
+    db_session.add(leg)
+    db_session.flush()
+    db_session.add_all(
+        [
+            LegPlayerState(leg_id=leg.id, player_id=match.player1_id),
+            LegPlayerState(leg_id=leg.id, player_id=match.player2_id),
+        ]
+    )
+    db_session.flush()
+    return str(match.id)
+
+
+def test_participant_can_read_match_they_did_not_create(client, setup, db_session):
+    opp_headers = signup(client, "opponent@example.com", "Opponent")
+    opp_player = client.post(
+        "/api/v1/players", json={"display_name": "Opponent"}, headers=opp_headers
     ).json()
-    assert client.get(f"/api/v1/matches/{match['id']}", headers=opp_headers).status_code == 200
+    match_id = legacy_match(db_session, "pat@example.com", setup["own"]["id"], opp_player["id"])
+    assert client.get(f"/api/v1/matches/{match_id}", headers=opp_headers).status_code == 200
 
 
 def test_impossible_dart_is_422(client, setup):
@@ -387,20 +438,17 @@ def test_list_excludes_other_users_matches(client, setup):
     assert body["total"] == 0
 
 
-def test_participant_sees_match_created_by_someone_else(client, setup):
-    # Second registered user; Patrick creates a match against THEIR player.
+def test_participant_sees_match_created_by_someone_else(client, setup, db_session):
+    # Second registered user; a pre-existing match of Patrick's against
+    # THEIR player (the API no longer creates these, see 5.5).
     other_headers = signup(client, "rival@example.com", "Rival")
     rival_player = client.post(
         "/api/v1/players", json={"display_name": "Rival"}, headers=other_headers
     ).json()
-    match = client.post(
-        "/api/v1/matches",
-        json={"opponent_player_id": rival_player["id"], "best_of_legs": 3},
-        headers=setup["headers"],
-    ).json()
+    match_id = legacy_match(db_session, "pat@example.com", setup["own"]["id"], rival_player["id"])
 
     rivals_list = client.get("/api/v1/matches", headers=other_headers).json()
-    assert [m["id"] for m in rivals_list["items"]] == [match["id"]]
+    assert [m["id"] for m in rivals_list["items"]] == [match_id]
 
 
 def test_list_requires_authentication(client):
