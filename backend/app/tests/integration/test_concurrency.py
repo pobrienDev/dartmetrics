@@ -50,10 +50,12 @@ def committed(engine):
             display_name="Locker",
         )
         human = Player(display_name="Locker", user_id=None)
-        bot = Player(display_name="Pro Bot", bot_difficulty="pro")
-        session.add_all([user, human, bot])
+        session.add_all([user, human])
         session.flush()
         human.user_id = user.id
+        # The shared bots come from the migration (one per difficulty).
+        bot = session.scalar(select(Player).where(Player.bot_difficulty == "pro"))
+        assert bot is not None, "run alembic upgrade head"
         match = Match(
             created_by_user_id=user.id,
             player1_id=human.id,
@@ -90,7 +92,7 @@ def committed(engine):
             session.execute(delete(LegPlayerState).where(LegPlayerState.leg_id == ids["leg"]))
             session.execute(delete(Leg).where(Leg.match_id == ids["match"]))
             session.execute(delete(Match).where(Match.id == ids["match"]))
-            session.execute(delete(Player).where(Player.id.in_([ids["human"], ids["bot"]])))
+            session.execute(delete(Player).where(Player.id == ids["human"]))
             session.execute(delete(User).where(User.id == ids["user"]))
             session.commit()
 

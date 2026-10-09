@@ -53,9 +53,7 @@ def list_bots(
     current_user: User = Depends(get_current_user),
 ) -> list[PlayerResponse]:
     """Computer opponents, easiest (noob) to hardest (pro)."""
-    bots = service.list_bots(db)
-    db.commit()
-    return bots
+    return service.list_bots(db)
 
 
 @router.get("/{player_id}", response_model=PlayerResponse)

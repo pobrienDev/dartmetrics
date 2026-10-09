@@ -59,25 +59,14 @@ BOT_DISPLAY_NAMES: dict[BotDifficulty, str] = {
 
 
 def list_bots(session: Session) -> list[Player]:
-    """The five shared bot opponents, easiest first, created on first
-    use so a fresh database needs no seeding step."""
-    existing = {
+    """The five shared bot opponents, easiest first. The rows are created
+    by the migration that added the one-bot-per-difficulty index, so
+    this is a plain read (GET must not write)."""
+    by_difficulty = {
         p.bot_difficulty: p
         for p in session.scalars(select(Player).where(Player.bot_difficulty.is_not(None)))
     }
-    bots = []
-    for difficulty in BotDifficulty:
-        bot = existing.get(difficulty.value)
-        if bot is None:
-            bot = Player(
-                user_id=None,
-                display_name=BOT_DISPLAY_NAMES[difficulty],
-                bot_difficulty=difficulty.value,
-            )
-            session.add(bot)
-        bots.append(bot)
-    session.flush()
-    return bots
+    return [by_difficulty[d.value] for d in BotDifficulty if d.value in by_difficulty]
 
 
 def list_players(
