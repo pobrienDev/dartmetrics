@@ -10,8 +10,9 @@ accuracy, so the numbers look like a club player's rather than a
 scripted nine-darter. The RNG is seeded, so a reset reproduces the
 same history.
 
-Run it against any database by setting DATABASE_URL, e.g. the
-production one to give visitors a ready-made account to explore.
+Run it against any development database by setting DATABASE_URL.
+The live site deliberately has no shared demo account (see README and
+docs/STATUS.md), so do not point it at production.
 """
 
 from __future__ import annotations
@@ -196,9 +197,9 @@ def seed(session: Session, reset: bool, seed_value: int) -> None:
         winner = "Sam" if match.winner_player_id == me.id else opp.display_name
         print(f"  {game.value:8s} best of {best_of} vs {opp.display_name:11s} -> {winner}")
 
-    # One live match to resume: Sam has just thrown a 180 to sit on 321
-    # with the bot to reply. Only the first visit is played so the
-    # screenshot/tour can throw the rest.
+    # One live match to resume: Sam has thrown a 180 to sit on 321 and
+    # the bot has already replied, so the match waits with Sam to throw
+    # and the screenshot/tour can take it from there.
     live = matches.create_match(session, user, bots[BotDifficulty.MEDIUM.value].id, 3, me.id, GameType.X01)
     session.flush()
     t20 = DartInput(20, bot.Multiplier.TRIPLE)
