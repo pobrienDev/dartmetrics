@@ -23,7 +23,11 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /api/v1/health
-    autoDeploy: true
+    # Deploy a push to main only once its GitHub checks pass: the
+    # container runs "alembic upgrade head" against the production
+    # database on start, so a commit with failing tests or a broken
+    # migration must never reach it. (Replaces the deprecated autoDeploy.)
+    autoDeployTrigger: checksPass
     envVars:
       # Neon connection string, e.g.
       # postgresql://user:pass@ep-xxx.region.aws.neon.tech/dartmetrics?sslmode=require
