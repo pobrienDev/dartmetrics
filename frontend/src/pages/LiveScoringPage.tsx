@@ -497,7 +497,9 @@ export function LiveScoringPage() {
               </button>
               <button
                 onClick={() => undoVisit.mutate()}
-                disabled={undoVisit.isPending}
+                // Not while a visit is being submitted: the undo would
+                // race it on the server and remove the previous visit.
+                disabled={undoVisit.isPending || submitVisit.isPending}
                 className="btn-secondary px-3 py-2.5 text-sm"
               >
                 Undo visit

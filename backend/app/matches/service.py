@@ -274,6 +274,40 @@ def get_match_for_user(session: Session, user: User, match_id: uuid.UUID) -> Mat
     return match
 
 
+def _lock_leg_states(session: Session, leg: Leg) -> dict[uuid.UUID, LegPlayerState]:
+    """SELECT ... FOR UPDATE on the leg's two state rows.
+
+    Every request that changes a leg (visit, bot visit, undo) takes this
+    lock first, so they run one at a time per leg: the second waits
+    here, then sees the committed turn count and gets a correct verdict
+    instead of colliding on turn_number (dev plan 8.2). populate_existing
+    makes SQLAlchemy overwrite rows already in the session with what the
+    lock just read; without it a row loaded before the lock keeps its
+    stale turn count and the lock protects nothing.
+    """
+    return {
+        s.player_id: s
+        for s in session.scalars(
+            select(LegPlayerState)
+            .where(LegPlayerState.leg_id == leg.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    }
+
+
+def _ensure_still_active(session: Session, match: Match, leg: Leg) -> None:
+    """Re-read match and leg status after the lock: a request that just
+    completed this leg or the match held the lock until it committed, so
+    a status read before the lock may be stale."""
+    session.refresh(match)
+    session.refresh(leg)
+    if match.status is not MatchStatus.IN_PROGRESS:
+        raise MatchNotActive(f"Match is {match.status}; scoring is not allowed.")
+    if leg.status is not LegStatus.IN_PROGRESS:
+        raise LegNotActive(f"Leg {leg.leg_number} is {leg.status}; scoring is not allowed.")
+
+
 def record_match_visit(
     session: Session,
     user: User,
@@ -344,12 +378,10 @@ def record_bot_visit(
     if leg is None:
         raise LegNotActive("The match has no active leg.")
 
-    states = {
-        s.player_id: s
-        for s in session.scalars(
-            select(LegPlayerState).where(LegPlayerState.leg_id == leg.id)
-        )
-    }
+    # Lock before deciding whose turn it is; record_turn re-selects the
+    # same rows under the lock this transaction already holds.
+    states = _lock_leg_states(session, leg)
+    _ensure_still_active(session, match, leg)
     active_id = _expected_player_id(leg, sum(s.turns_taken for s in states.values()))
     active = session.get(Player, active_id)
     if not active.is_bot:
@@ -410,6 +442,12 @@ def undo_latest_visit(session: Session, user: User, match_id: uuid.UUID) -> Matc
     )
     if leg is None:
         raise LegNotActive("The match has no active leg.")
+
+    # Same lock as scoring: an undo tapped while a visit is in flight
+    # waits for it, then removes that visit (the latest) rather than an
+    # older one, which would leave a gap in the turn numbers.
+    _lock_leg_states(session, leg)
+    _ensure_still_active(session, match, leg)
 
     latest = _latest_turn(session, leg)
     if latest is None:
@@ -789,18 +827,8 @@ def record_turn(
     if player_id not in (match.player1_id, match.player2_id):
         raise PlayerNotInMatch(f"Player {player_id} is not in this match.")
 
-    # FOR UPDATE serializes concurrent scoring on the same leg (dev
-    # plan 8.2: "lock/read active match + leg"). A second concurrent
-    # visit waits here, then sees the updated turn count and gets a
-    # correct turn-order verdict instead of colliding on turn_number.
-    states = {
-        s.player_id: s
-        for s in session.scalars(
-            select(LegPlayerState)
-            .where(LegPlayerState.leg_id == leg.id)
-            .with_for_update()
-        )
-    }
+    states = _lock_leg_states(session, leg)
+    _ensure_still_active(session, match, leg)
     state = states[player_id]
     total_turns = sum(s.turns_taken for s in states.values())
     expected = _expected_player_id(leg, total_turns)
