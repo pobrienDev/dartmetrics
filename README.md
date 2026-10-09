@@ -100,8 +100,12 @@ Three ideas hold it together:
   few rules only to decide when a visit is complete, and re-renders from
   the server's answer.
 - **Store raw events, derive statistics.** `dart_throws` → `turns` →
-  `legs` → `matches`. Nothing aggregated is stored, so every statistic
-  can be recomputed and audited, and new ones need no migration.
+  `legs` → `matches`. Career statistics are computed from the raw darts
+  at query time, so every number can be recomputed and audited, and a
+  new statistic needs no migration. One per-leg snapshot table
+  (`leg_player_states`: remaining score, darts thrown, Cricket marks,
+  Halve It totals) is kept as a cache for the live scoreboard and as
+  the row that scoring locks; undo restores it from the raw turns.
 - **The database defends the rules.** Check constraints reject a fourth
   dart, a bust that changes the score, or a remaining score of 1, even
   if application code is bypassed.
