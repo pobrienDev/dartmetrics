@@ -267,7 +267,7 @@ docker compose up -d
 cd backend
 uv sync --locked --group dev                # creates .venv; Windows: same command
 .venv/bin/alembic upgrade head
-.venv/bin/pytest                            # 265 tests; integration tests skip without PostgreSQL
+.venv/bin/pytest                            # 287 tests; integration tests skip without PostgreSQL
 .venv/bin/uvicorn app.main:app --reload     # http://localhost:8000, docs at /docs
 #    Without uv: python -m venv .venv && .venv/bin/python -m pip install --upgrade pip
 #    && .venv/bin/pip install -e . --group dev (pip 25.1+; resolves fresh, not from the lock).
