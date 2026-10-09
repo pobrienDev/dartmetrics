@@ -226,3 +226,37 @@ def test_api_docs_are_exempt_from_the_csp_only(app_with_env):
         assert response.status_code == 200, path
         assert "content-security-policy" not in response.headers
         assert response.headers["x-content-type-options"] == "nosniff"
+
+
+# --- Rate limit envelope ---------------------------------------------------
+
+
+def test_retry_after_follows_the_window_of_the_limit_that_tripped(app_with_env):
+    """The header and message used to say 60 seconds whatever the limit;
+    with AUTH_RATE_LIMIT=5/hour clients were told to retry too soon."""
+    from fastapi import Request
+
+    from app.common.ratelimit import limiter
+
+    app = app_with_env(RATE_LIMIT_ENABLED="1")
+    limiter.reset()
+
+    @app.get("/api/v1/_two-per-hour")
+    @limiter.limit("2/hour")
+    def probe(request: Request) -> dict[str, str]:  # slowapi keys on the Request
+        return {"ok": "yes"}
+
+    client = TestClient(app)
+    assert client.get("/api/v1/_two-per-hour").status_code == 200
+    assert client.get("/api/v1/_two-per-hour").status_code == 200
+    response = client.get("/api/v1/_two-per-hour")
+    limiter.reset()
+
+    assert response.status_code == 429
+    assert response.headers["Retry-After"] == "3600"
+    assert response.json() == {
+        "error": {
+            "code": "RATE_LIMITED",
+            "message": "Too many attempts; please wait an hour and try again.",
+        }
+    }
