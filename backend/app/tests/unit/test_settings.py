@@ -1,5 +1,7 @@
 """Startup configuration guards, CORS wiring, and production static serving."""
 
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
@@ -158,10 +160,40 @@ def test_frontend_build_is_served_alongside_the_api(app_with_env, frontend_build
 
 
 def test_frontend_serving_never_escapes_the_build_directory(app_with_env, frontend_build):
+    """A sentinel sits next to the build directory. A plain /../ would be
+    normalised away by the HTTP client before it is ever sent, so the
+    request uses an encoded separator, which reaches the handler as a
+    real '../' path parameter; the direct call covers the handler too."""
+    secret = frontend_build.parent / "secret.txt"
+    secret.write_text("not for serving")
+    app = app_with_env(STATIC_DIR=str(frontend_build))
+    client = TestClient(app)
+
+    for path in ("/..%2fsecret.txt", "/%2e%2e/secret.txt"):
+        response = client.get(path)
+        assert response.status_code == 200, path
+        assert "not for serving" not in response.text, path
+        assert "id=root" in response.text, path  # fell back to the app shell
+
+    # Through the hashed-assets mount, StaticFiles' own guard answers 404.
+    response = client.get("/assets%2f..%2f..%2fsecret.txt")
+    assert response.status_code == 404
+    assert "not for serving" not in response.text
+
+    # The guard itself, without the HTTP layer's own normalisation.
+    spa = next(r.endpoint for r in app.routes if getattr(r, "name", None) == "spa")
+    response = spa(full_path="../secret.txt")
+    assert Path(response.path) == frontend_build / "index.html"
+
+
+def test_frontend_serving_guard_is_what_stops_the_escape(app_with_env, frontend_build, monkeypatch):
+    """Proof the previous test can fail: with the is_relative_to check
+    neutralised, the same request serves the sentinel."""
+    secret = frontend_build.parent / "secret.txt"
+    secret.write_text("not for serving")
+    monkeypatch.setattr(Path, "is_relative_to", lambda self, other: True)
     client = TestClient(app_with_env(STATIC_DIR=str(frontend_build)))
-    response = client.get("/../pyproject.toml")
-    assert response.status_code == 200
-    assert 'id=root' in response.text  # fell back to the app shell
+    assert "not for serving" in client.get("/..%2fsecret.txt").text
 
 
 # --- Security headers ------------------------------------------------------
