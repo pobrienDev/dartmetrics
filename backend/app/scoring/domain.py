@@ -1,4 +1,4 @@
-"""Core value objects for the 501 scoring domain.
+"""Core value objects shared by the scoring engines (501, Cricket, Halve It).
 
 These types define what a legal dart *is*. Any DartInput that can be
 constructed is guaranteed valid, so the scoring engine never needs to

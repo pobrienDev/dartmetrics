@@ -32,7 +32,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title=f"{settings.app_name} API",
         version="0.1.0",
-        description="Darts 501 scoring and player analytics.",
+        description="Darts scoring (501, Cricket, Halve It) and player analytics.",
     )
 
     # Rate limiting: slowapi keeps counters in process memory, which is

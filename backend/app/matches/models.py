@@ -1,7 +1,8 @@
 """Match persistence models (Phase 0 spec, sections 9-12, 17).
 
-A Match is the contest between exactly two players; a Leg is one race
-from 501 to 0 inside it; LegPlayerState tracks each player's remaining
+A Match is the contest between exactly two players; a Leg is one game
+inside it (a race from 501 to 0, a Cricket board to close, or nine
+Halve It rounds); LegPlayerState tracks each player's remaining
 score; a Turn is one visit of up to three darts; a DartThrow is the
 most granular scoring event. Database constraints enforce the spec's
 invariants where practical so bad states cannot be persisted even by

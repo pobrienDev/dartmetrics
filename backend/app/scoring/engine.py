@@ -2,8 +2,8 @@
 
 Implements the Phase 0 evaluation order (spec sections 13-14) for a
 single dart. No FastAPI, no database — just rules. The turn service
-(a later step) is responsible for turn counts, alternation, and
-persistence; this module only answers: given a remaining score and a
+(app/matches/service.py) is responsible for turn counts, alternation,
+and persistence; this module only answers: given a remaining score and a
 dart, what happens?
 
 Rules applied here (double-out 501):

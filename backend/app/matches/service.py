@@ -72,8 +72,10 @@ def create_match(
     starting_player_id: uuid.UUID | None,
     game_type: GameType = GameType.X01,
 ) -> Match:
-    """Create a match between the user's player and an opponent, and
-    immediately start leg 1 at 501-501 (dev plan core workflow step 5)."""
+    """Create a match between the user's player and an opponent (one of
+    their guests, or a bot) and immediately start leg 1: 501-501, an
+    empty Cricket board, or 40-40 in Halve It (dev plan core workflow
+    step 5)."""
     own_player = session.scalar(select(Player).where(Player.user_id == user.id))
     if own_player is None:
         raise MissingPlayerProfile(
