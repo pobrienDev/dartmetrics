@@ -443,6 +443,33 @@ def test_pagination(client, setup):
     assert rest["items"][0]["id"] == ids[0]  # oldest lands on last page
 
 
+def test_listing_a_page_runs_a_fixed_number_of_queries(client, setup, engine):
+    """list_matches used to lazy-load each match's legs and look up each
+    player one at a time: two or more queries per row. Now it is one
+    query for the page, one for its legs and one for its players,
+    however many matches the page holds."""
+    from sqlalchemy import event
+
+    for _ in range(6):
+        make_match(client, setup)
+
+    statements: list[str] = []
+
+    def record(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", record)
+    try:
+        body = client.get("/api/v1/matches?limit=3", headers=setup["headers"]).json()
+    finally:
+        event.remove(engine, "before_cursor_execute", record)
+
+    assert len(body["items"]) == 3
+    selects = [s for s in statements if s.lstrip().upper().startswith("SELECT")]
+    # auth user lookup, count, page, legs, players
+    assert len(selects) <= 5, selects
+
+
 def test_list_excludes_other_users_matches(client, setup):
     make_match(client, setup)
 

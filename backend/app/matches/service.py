@@ -19,7 +19,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.auth.models import User
 from app.common.errors import (
@@ -194,21 +194,29 @@ def list_matches(
         session.scalars(
             select(Match)
             .where(*conditions)
+            .options(selectinload(Match.legs))  # one query for the page's legs
             .order_by(Match.created_at.desc())
             .limit(limit)
             .offset(offset)
         )
     )
+    # ... and one for the page's players, instead of two per row.
+    player_ids = {pid for m in matches for pid in (m.player1_id, m.player2_id)}
+    names = {
+        pid: name
+        for pid, name in session.execute(
+            select(Player.id, Player.display_name).where(Player.id.in_(player_ids))
+        )
+    } if player_ids else {}
 
     items = []
     for match in matches:
         players = []
         for player_id in (match.player1_id, match.player2_id):
-            player = session.get(Player, player_id)
             players.append(
                 {
                     "player_id": player_id,
-                    "display_name": player.display_name,
+                    "display_name": names[player_id],
                     "legs_won": sum(
                         1 for leg in match.legs if leg.winner_player_id == player_id
                     ),
