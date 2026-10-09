@@ -54,6 +54,10 @@ jobs:
       - name: Apply database migrations
         run: uv run alembic upgrade head
 
+      # Fails if the models have drifted from the migrations.
+      - name: Check migrations match the models
+        run: uv run alembic check
+
       - name: Run tests
         run: uv run pytest -q
 
@@ -85,6 +89,9 @@ jobs:
         run: npm run build
 
   e2e:
+    # Minutes of browser and image work are wasted when a unit test has
+    # already failed; both heavy jobs wait for the fast ones.
+    needs: [backend-tests, frontend-tests]
     runs-on: ubuntu-latest
 
     services:
@@ -148,7 +155,18 @@ jobs:
         working-directory: frontend
         run: npx playwright test
 
+      # Playwright keeps a trace per failed test (trace: retain-on-failure);
+      # without this step nobody can open it.
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: frontend/test-results
+          if-no-files-found: ignore
+
   docker-build:
+    needs: [backend-tests, frontend-tests]
     runs-on: ubuntu-latest
 
     steps:
