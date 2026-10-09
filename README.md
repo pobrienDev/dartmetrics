@@ -37,7 +37,9 @@
   always be recomputed.
 - **Live scoring that helps.** The score counts down as each dart goes
   in, a checkout suggestion appears whenever a finish is on, and busts,
-  180s and checkouts each get their moment. Undo removes the last visit.
+  180s and checkouts each get their moment. Undo removes the last visit
+  of the leg in play; a leg-winning visit cannot be undone once the
+  next leg has started (completed legs are immutable).
 - **Five bot opponents**, Noob to Pro, driven by a pure throw simulator
   with tuned accuracy tables. Bot visits go through the same rules and
   statistics as human ones.
