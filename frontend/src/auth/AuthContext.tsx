@@ -10,7 +10,16 @@ import { api, ApiError, clearToken, getToken, SESSION_EXPIRED_EVENT, setToken } 
 import type { TokenResponse, UserResponse } from '../api/types'
 import { AuthContext } from './useAuth'
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+export function AuthProvider({
+  children,
+  onSignOut,
+}: {
+  children: ReactNode
+  // Runs whenever the session ends (logout or expiry): the app uses it
+  // to clear the query cache so the next person to sign in on this
+  // tab never sees the previous user's matches or stats.
+  onSignOut?: () => void
+}) {
   const [user, setUser] = useState<UserResponse | null>(null)
   const [loading, setLoading] = useState<boolean>(() => getToken() !== null)
   const [startupError, setStartupError] = useState<string | null>(null)
@@ -41,10 +50,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // signs the user out; ProtectedRoute then redirects to login with the
   // current page remembered.
   useEffect(() => {
-    const signOut = () => setUser(null)
+    const signOut = () => {
+      setUser(null)
+      onSignOut?.()
+    }
     window.addEventListener(SESSION_EXPIRED_EVENT, signOut)
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, signOut)
-  }, [])
+  }, [onSignOut])
 
   const login = useCallback(async (email: string, password: string) => {
     const token = await api<TokenResponse>('/api/v1/auth/login', {
@@ -70,7 +82,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Stateless JWT: logout is discarding the token (see README).
     clearToken()
     setUser(null)
-  }, [])
+    onSignOut?.()
+  }, [onSignOut])
 
   return (
     <AuthContext.Provider value={{ user, loading, startupError, retry, login, register, logout }}>
