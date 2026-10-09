@@ -234,7 +234,9 @@ re-enter.
 
 ## Local development
 
-Requirements: Python 3.12+, Node.js 20+, Docker Desktop.
+Requirements: Python 3.12+, [uv](https://docs.astral.sh/uv/), Node.js 22.22+ or
+24.15+ (the test dependencies, jsdom and jest-dom, need it; CI and the
+image use 24), Docker Desktop.
 
 ```bash
 # 1. Configuration: copy the example, then set a real SECRET_KEY in .env.
