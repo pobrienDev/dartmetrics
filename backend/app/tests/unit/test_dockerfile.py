@@ -38,34 +38,50 @@ def test_dependencies_install_before_the_source_is_copied():
     steps = api_stage_instructions()
 
     manifest = index_of(steps, "COPY", "pyproject.toml")
-    install_deps = index_of(steps, "RUN", "pip install -r")
+    install_deps = index_of(steps, "RUN", "uv sync", "--no-install-project")
     copy_source = index_of(steps, "COPY", "backend/app")
 
     assert manifest < install_deps < copy_source
 
 
-def test_nothing_but_the_manifest_is_copied_before_dependencies_install():
+def test_nothing_but_the_manifest_and_lock_are_copied_before_dependencies_install():
     steps = api_stage_instructions()
-    install_deps = index_of(steps, "RUN", "pip install -r")
+    install_deps = index_of(steps, "RUN", "uv sync", "--no-install-project")
 
-    copied_first = [ln for ln in steps[:install_deps] if ln.startswith("COPY")]
+    # The uv binary comes from its own image; everything else must wait.
+    copied_first = [
+        ln for ln in steps[:install_deps] if ln.startswith("COPY") and "--from=" not in ln
+    ]
 
-    assert copied_first == ["COPY backend/pyproject.toml ./"]
+    assert copied_first == ["COPY backend/pyproject.toml backend/uv.lock ./"]
 
 
 def test_the_app_is_installed_without_re_resolving_dependencies():
     steps = api_stage_instructions()
 
     copy_source = index_of(steps, "COPY", "backend/app")
-    install_app = index_of(steps, "RUN", "pip install --no-deps .")
+    install_app = index_of(steps, "RUN", "uv sync", "--no-editable")
 
     assert copy_source < install_app
 
 
-def test_dependency_list_comes_from_pyproject_not_a_second_file():
-    # One source of truth: no requirements.txt to drift out of sync.
+def test_dependencies_come_from_the_lock_file():
+    """Reproducible builds: every install step uses --locked, so the image
+    gets exactly the versions in uv.lock (the ones CI tested) and the
+    build fails if the lock has drifted from pyproject.toml. No
+    requirements.txt exists to drift the other way."""
     steps = api_stage_instructions()
-    install_deps = steps[index_of(steps, "RUN", "pip install -r")]
+    syncs = [ln for ln in steps if ln.startswith("RUN") and "uv sync" in ln]
 
-    assert "tomllib" in install_deps and "pyproject.toml" in install_deps
+    assert len(syncs) == 2
+    assert all("--locked" in ln for ln in syncs)
+    assert (DOCKERFILE.parent / "backend" / "uv.lock").exists()
     assert not (DOCKERFILE.parent / "backend" / "requirements.txt").exists()
+
+
+def test_base_images_are_pinned_by_digest():
+    text = DOCKERFILE.read_text(encoding="utf-8")
+    froms = [ln for ln in text.splitlines() if ln.startswith("FROM ") or "COPY --from=" in ln]
+    assert len(froms) >= 3  # node, python, uv
+    for ln in froms:
+        assert "@sha256:" in ln or "--from=frontend" in ln, ln

@@ -245,13 +245,16 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"   # paste into .env
 # 2. Start PostgreSQL
 docker compose up -d
 
-# 3. Backend
+# 3. Backend. uv installs exactly the versions in uv.lock, the same set CI
+#    tests and the Docker image ships (https://docs.astral.sh/uv/).
 cd backend
-python -m venv .venv
-.venv/bin/pip install -e . --group dev      # Windows: .venv\Scripts\pip ...
+uv sync --locked --group dev                # creates .venv; Windows: same command
 .venv/bin/alembic upgrade head
 .venv/bin/pytest                            # 265 tests; integration tests skip without PostgreSQL
 .venv/bin/uvicorn app.main:app --reload     # http://localhost:8000, docs at /docs
+#    Without uv: python -m venv .venv && .venv/bin/python -m pip install --upgrade pip
+#    && .venv/bin/pip install -e . --group dev (pip 25.1+; resolves fresh, not from the lock).
+#    Changing a dependency in pyproject.toml: run `uv lock` and commit uv.lock.
 
 # 4. Frontend (second terminal)
 cd frontend
