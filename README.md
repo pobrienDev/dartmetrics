@@ -237,7 +237,8 @@ re-enter.
   cookie is planned for V1 alongside refresh tokens, since it also
   needs CSRF protection.
 - **The OpenAPI docs (`/docs`) are public on purpose** — the API surface
-  is documented, not secret, and every route needs a valid token.
+  is documented, not secret, and every route except health, readiness,
+  register and login needs a valid token.
 - **Behind a reverse proxy**, run uvicorn with `--proxy-headers` and
   `--forwarded-allow-ips` so the rate limiter sees real client
   addresses. TLS termination and HSTS belong to that proxy layer; the
