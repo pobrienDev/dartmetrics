@@ -87,6 +87,7 @@ export function LiveScoringPage() {
   const [banner, setBanner] = useState<{ text: string; moment: Moment } | null>(null)
   const [flash, setFlash] = useState<Flash | null>(null)
   const [recentTurns, setRecentTurns] = useState<RecentVisit[]>([])
+  const [confirmAbandon, setConfirmAbandon] = useState(false)
 
   const matchQuery = useQuery({
     queryKey: ['match', matchId],
@@ -260,6 +261,23 @@ export function LiveScoringPage() {
     onError: (err) => show(err instanceof ApiError ? err.message : 'Something went wrong.', 'bust'),
   })
 
+  // Ending a match without a winner lists it as cancelled; it leaves the
+  // dashboard's resume list and the history's filters, so those refetch.
+  const abandonMatch = useMutation({
+    mutationFn: () =>
+      api<MatchState>(`/api/v1/matches/${matchId}/abandon`, { method: 'POST' }),
+    onSuccess: (newState) => {
+      queryClient.setQueryData(['match', matchId], newState)
+      queryClient.invalidateQueries({ queryKey: ['matches'] })
+      setConfirmAbandon(false)
+      show('Match abandoned.')
+    },
+    onError: (err) => {
+      setConfirmAbandon(false)
+      show(err instanceof ApiError ? err.message : 'Something went wrong.', 'bust')
+    },
+  })
+
   function addDart(rawDart: DartRequest) {
     if (!activePlayer || submitVisit.isPending || botIsUp) return
     // In Halve It, numbered singles carry the selected band.
@@ -321,8 +339,39 @@ export function LiveScoringPage() {
           </span>
           Best of {state.best_of_legs}
           {state.current_leg ? ` · Leg ${state.current_leg.leg_number}` : ''}
+          {!finished && (
+            <button
+              onClick={() => setConfirmAbandon(true)}
+              disabled={confirmAbandon || abandonMatch.isPending}
+              className="btn-ghost px-2 py-1 text-sm"
+            >
+              Abandon match
+            </button>
+          )}
         </span>
       </header>
+
+      {confirmAbandon && !finished && (
+        <div
+          role="alertdialog"
+          aria-label="Abandon this match?"
+          className="mx-auto mb-2 flex max-w-3xl flex-wrap items-center justify-between gap-3 rounded-xl border border-bust-700/60 bg-bust-900/40 px-4 py-3 text-sm sm:mx-6"
+        >
+          <span>End this match without a winner? It will be listed as cancelled.</span>
+          <span className="flex gap-2">
+            <button
+              onClick={() => abandonMatch.mutate()}
+              disabled={abandonMatch.isPending}
+              className="btn-primary px-3 py-2 text-sm"
+            >
+              {abandonMatch.isPending ? 'Ending…' : 'Yes, abandon'}
+            </button>
+            <button onClick={() => setConfirmAbandon(false)} className="btn-secondary px-3 py-2 text-sm">
+              Keep playing
+            </button>
+          </span>
+        </div>
+      )}
 
       {/* Scoreboard */}
       <div className="mx-auto grid max-w-3xl grid-cols-2 gap-3 px-4 py-2 sm:gap-4 sm:px-6">

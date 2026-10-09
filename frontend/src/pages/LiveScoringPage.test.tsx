@@ -66,9 +66,9 @@ function stubApi(initial: MatchState, visitReply: () => VisitResponse) {
   return posted
 }
 
-function renderPage() {
+function renderPage(queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+    <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={['/matches/match-1']}>
         <Routes>
           <Route path="/matches/:matchId" element={<LiveScoringPage />} />
@@ -308,5 +308,47 @@ describe('LiveScoringPage resync after failures', () => {
     await waitFor(() => expect(calls.botPosts).toBe(2), { timeout: 4000 })
     expect(await screen.findByText('441')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument()
+  })
+})
+
+describe('LiveScoringPage abandon', () => {
+  it('abandons the match after a confirmation and refreshes the match lists', async () => {
+    const abandoned: MatchState = { ...x01State(), status: 'cancelled', current_leg: null }
+    abandoned.players = abandoned.players.map((p) => ({ ...p, is_active_turn: false }))
+    const posted: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        const method = init?.method ?? 'GET'
+        if (url === '/api/v1/matches/match-1' && method === 'GET') return Promise.resolve(jsonResponse(x01State()))
+        if (url === '/api/v1/matches/match-1/abandon' && method === 'POST') {
+          posted.push(url)
+          return Promise.resolve(jsonResponse(abandoned))
+        }
+        return Promise.resolve(jsonResponse({ error: { code: 'NOT_FOUND', message: url } }, 404))
+      }),
+    )
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    // The dashboard's resume list, cached from an earlier visit.
+    queryClient.setQueryData(['matches', 'in_progress'], { items: [{ id: 'match-1' }], total: 1, limit: 20, offset: 0 })
+    renderPage(queryClient)
+    const user = userEvent.setup()
+
+    await screen.findAllByText('501')
+    await user.click(screen.getByRole('button', { name: 'Abandon match' }))
+    // Nothing is sent until the confirmation.
+    expect(posted).toHaveLength(0)
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('without a winner')
+
+    await user.click(screen.getByRole('button', { name: 'Keep playing' }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Abandon match' }))
+    await user.click(screen.getByRole('button', { name: 'Yes, abandon' }))
+
+    expect(await screen.findByText('Match ended.')).toBeInTheDocument()
+    expect(posted).toEqual(['/api/v1/matches/match-1/abandon'])
+    expect(screen.queryByRole('button', { name: 'Abandon match' })).not.toBeInTheDocument()
+    expect(queryClient.getQueryState(['matches', 'in_progress'])?.isInvalidated).toBe(true)
   })
 })
