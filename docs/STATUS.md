@@ -307,4 +307,7 @@ the dashboard resume row.
 See the README "Local development" section — it is kept accurate and
 was verified on a fresh environment. Requirements: Python 3.12+,
 Node.js, Docker Desktop. Secrets live in an untracked `.env` created
-from `.env.example` (generate your own SECRET_KEY).
+from `.env.example`; generating your own SECRET_KEY is a required step,
+not optional: the copied placeholder is refused at startup, and the
+unit tests that import `app.main` fail at collection until it is set
+(README step 1 says so since 2026-10-09).

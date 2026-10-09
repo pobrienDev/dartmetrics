@@ -216,8 +216,10 @@ re-enter.
 Requirements: Python 3.12+, Node.js 20+, Docker Desktop.
 
 ```bash
-# 1. Configuration (defaults work for local development)
+# 1. Configuration: copy the example, then set a real SECRET_KEY in .env.
+#    The placeholder is refused at startup; the other values work as-is.
 cp .env.example .env            # Windows: copy .env.example .env
+python -c "import secrets; print(secrets.token_urlsafe(32))"   # paste into .env as SECRET_KEY
 
 # 2. Start PostgreSQL
 docker compose up -d
