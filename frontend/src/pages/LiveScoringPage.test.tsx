@@ -352,3 +352,131 @@ describe('LiveScoringPage abandon', () => {
     expect(queryClient.getQueryState(['matches', 'in_progress'])?.isInvalidated).toBe(true)
   })
 })
+
+describe('LiveScoringPage Cricket, bot turn and undo', () => {
+  function cricketState(marks: Record<string, number>, active = ME): MatchState {
+    const base = x01State({ active })
+    return {
+      ...base,
+      game_type: 'cricket',
+      players: base.players.map((p) => ({
+        ...p,
+        remaining_score: null,
+        marks: p.player_id === ME ? marks : { '20': 0, '19': 0, '18': 0, '17': 0, '16': 0, '15': 0, '25': 0 },
+      })),
+    }
+  }
+
+  it('shows the marks grid and submits a Cricket visit', async () => {
+    const posted = stubApi(cricketState({ '20': 1, '19': 0, '18': 0, '17': 0, '16': 0, '15': 0, '25': 0 }), () => ({
+      turn: { id: 'turn-1', player_id: ME, turn_number: 1, turn_start_score: 0, turn_end_score: 0, points_scored: 0, is_bust: false, is_checkout: false },
+      state: cricketState({ '20': 3, '19': 1, '18': 0, '17': 0, '16': 0, '15': 0, '25': 0 }, RIVAL),
+    }))
+    renderPage()
+    const user = userEvent.setup()
+
+    // Every Cricket target has a column; 20 already carries one mark.
+    await screen.findAllByText('Bull')
+    expect(screen.getAllByText('╱')).toHaveLength(1)
+
+    await user.click(screen.getByRole('button', { name: 'double' }))
+    await user.click(screen.getByRole('button', { name: '20' }))
+    await user.click(screen.getByRole('button', { name: 'single' }))
+    await user.click(screen.getByRole('button', { name: '19' }))
+    await user.click(screen.getByRole('button', { name: '19' }))
+
+    await waitFor(() => expect(posted).toHaveLength(1))
+    expect(posted[0]).toMatchObject({
+      player_id: ME,
+      darts: [
+        { segment: 20, multiplier: 'double' },
+        { segment: 19, multiplier: 'single' },
+        { segment: 19, multiplier: 'single' },
+      ],
+    })
+    // The closed 20 shows as a full mark from the server's state.
+    expect(await screen.findByText('◎')).toBeInTheDocument()
+  })
+
+  it('asks the server to throw for the bot after a beat, then hands the turn back', async () => {
+    const botState = x01State({ active: RIVAL })
+    botState.players = botState.players.map((p) =>
+      p.player_id === RIVAL ? { ...p, display_name: 'Medium Bot', bot_difficulty: 'medium' } : p,
+    )
+    const botPosts: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        const method = init?.method ?? 'GET'
+        if (url === '/api/v1/matches/match-1' && method === 'GET') return Promise.resolve(jsonResponse(botState))
+        if (url === '/api/v1/matches/match-1/bot-visit' && method === 'POST') {
+          botPosts.push(url)
+          return Promise.resolve(
+            jsonResponse(
+              {
+                turn: { id: 'turn-1', player_id: RIVAL, turn_number: 1, turn_start_score: 501, turn_end_score: 416, points_scored: 85, is_bust: false, is_checkout: false },
+                state: x01State({ theirs: 416, active: ME }),
+                darts: [{ segment: 20, multiplier: 'triple' }, { segment: 5, multiplier: 'single' }, { segment: 20, multiplier: 'single' }],
+              },
+              201,
+            ),
+          )
+        }
+        return Promise.resolve(jsonResponse({ error: { code: 'NOT_FOUND', message: url } }, 404))
+      }),
+    )
+    renderPage()
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Medium is stepping up…')
+    expect(screen.queryByRole('button', { name: '20' })).not.toBeInTheDocument() // no pad while the bot is up
+    expect(botPosts).toHaveLength(0)
+
+    // After BOT_THROW_DELAY_MS the visit is requested and the board updates.
+    expect(await screen.findByText('416', {}, { timeout: 4000 })).toBeInTheDocument()
+    expect(botPosts).toHaveLength(1)
+    expect(screen.getByRole('button', { name: '20' })).toBeInTheDocument()
+    expect(screen.getByText('Recent visits').parentElement).toHaveTextContent('T20 5 20')
+  })
+
+  it('undoes the last visit and drops it from recent visits', async () => {
+    const deletes: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        const method = init?.method ?? 'GET'
+        if (url === '/api/v1/matches/match-1' && method === 'GET') return Promise.resolve(jsonResponse(x01State()))
+        if (url === '/api/v1/matches/match-1/visits' && method === 'POST') {
+          return Promise.resolve(
+            jsonResponse(
+              {
+                turn: { id: 'turn-1', player_id: ME, turn_number: 1, turn_start_score: 501, turn_end_score: 441, points_scored: 60, is_bust: false, is_checkout: false },
+                state: x01State({ mine: 441, active: RIVAL }),
+              },
+              201,
+            ),
+          )
+        }
+        if (url === '/api/v1/matches/match-1/visits/latest' && method === 'DELETE') {
+          deletes.push(url)
+          return Promise.resolve(jsonResponse(x01State()))
+        }
+        return Promise.resolve(jsonResponse({ error: { code: 'NOT_FOUND', message: url } }, 404))
+      }),
+    )
+    renderPage()
+    const user = userEvent.setup()
+
+    await screen.findAllByText('501')
+    for (let i = 0; i < 3; i++) await user.click(screen.getByRole('button', { name: '20' }))
+    expect(await screen.findByText('441')).toBeInTheDocument()
+    expect(screen.getByText('Recent visits')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Undo visit' }))
+
+    expect(await screen.findByRole('status')).toHaveTextContent('Last visit undone.')
+    expect(deletes).toEqual(['/api/v1/matches/match-1/visits/latest'])
+    // Both cards back on 501 (the third match is the game chip in the header).
+    expect(screen.getAllByText('501')).toHaveLength(3)
+    expect(screen.queryByText('Recent visits')).not.toBeInTheDocument()
+  })
+})
