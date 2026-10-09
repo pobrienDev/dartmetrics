@@ -112,7 +112,14 @@ export function NewMatchPage() {
                 <button
                   key={game.value}
                   type="button"
-                  onClick={() => setGameType(game.value)}
+                  onClick={() => {
+                    setGameType(game.value)
+                    // Halve It is a single game by default (docs/GAME_MODES.md);
+                    // the other modes default to best of 3. A length the player
+                    // chose on purpose is kept when switching between those.
+                    if (game.value === 'halve_it') setBestOf(1)
+                    else if (bestOf === 1 && gameType === 'halve_it') setBestOf(3)
+                  }}
                   className={`choice flex-1 ${gameType === game.value ? 'choice-on' : 'choice-off'}`}
                 >
                   {game.label}

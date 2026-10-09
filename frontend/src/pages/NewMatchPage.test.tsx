@@ -120,3 +120,23 @@ describe('NewMatchPage human opponents', () => {
     expect(screen.queryByRole('option', { name: /rival/i })).not.toBeInTheDocument()
   })
 })
+
+describe('NewMatchPage match length', () => {
+  it('defaults Halve It to a single game and the other modes to best of 3', async () => {
+    const created = stubApi()
+    renderPage()
+    const user = userEvent.setup()
+
+    expect(screen.getByRole('button', { name: 'Best of 3' }).className).toContain('choice-on')
+    await user.click(screen.getByRole('button', { name: /halve it/i }))
+    expect(screen.getByRole('button', { name: 'Best of 1' }).className).toContain('choice-on')
+    await user.click(screen.getByRole('button', { name: /^501/i }))
+    expect(screen.getByRole('button', { name: 'Best of 3' }).className).toContain('choice-on')
+
+    await user.click(screen.getByRole('button', { name: /halve it/i }))
+    await user.click(screen.getByRole('button', { name: /^bot$/i }))
+    await user.click(screen.getByRole('button', { name: /start match/i }))
+    await waitFor(() => expect(created).toHaveLength(1))
+    expect(created[0]).toMatchObject({ game_type: 'halve_it', best_of_legs: 1 })
+  })
+})
