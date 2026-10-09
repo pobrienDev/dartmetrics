@@ -20,10 +20,11 @@ automatically. Definitions applied:
 
 import uuid
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.common.errors import InvalidRequest
+from app.auth.models import User
+from app.common.errors import Forbidden, InvalidRequest
 from app.matches.models import (
     DartThrow,
     GameType,
@@ -44,6 +45,34 @@ _X01_ONLY = Match.game_type == GameType.X01
 
 def _round(value: float | None) -> float | None:
     return None if value is None else round(value, 2)
+
+
+def ensure_stats_access(session: Session, user: User, player_id: uuid.UUID) -> Player:
+    """Statistics are private, like match state: readable by the
+    profile's owner (the account it is linked to, or the account that
+    created the guest) and by anyone who shares a match with the player
+    — which is how the shared bots' records stay visible to the people
+    who played them. Everyone else gets 403."""
+    player = get_player(session, player_id)
+    if user.id in (player.user_id, player.created_by_user_id):
+        return player
+
+    own_player_ids = select(Player.id).where(Player.user_id == user.id)
+    shared_match = session.scalar(
+        select(Match.id)
+        .where(
+            or_(Match.player1_id == player_id, Match.player2_id == player_id),
+            or_(
+                Match.created_by_user_id == user.id,
+                Match.player1_id.in_(own_player_ids),
+                Match.player2_id.in_(own_player_ids),
+            ),
+        )
+        .limit(1)
+    )
+    if shared_match is None:
+        raise Forbidden("Statistics are visible to the player and the people they play.")
+    return player
 
 
 def head_to_head(

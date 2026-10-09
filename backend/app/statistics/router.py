@@ -20,7 +20,9 @@ def get_player_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> PlayerStatsResponse:
-    """Career statistics derived from raw throw data."""
+    """Career statistics derived from raw throw data. Visible to the
+    player's owner and to anyone who has played them; 403 otherwise."""
+    service.ensure_stats_access(db, current_user, player_id)
     return service.player_stats(db, player_id)
 
 
@@ -31,5 +33,8 @@ def get_head_to_head(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> HeadToHeadResponse:
-    """Completed-match record between two players."""
+    """Completed-match record between two players; the caller needs
+    access to both players' statistics."""
+    service.ensure_stats_access(db, current_user, player_id)
+    service.ensure_stats_access(db, current_user, opponent_id)
     return service.head_to_head(db, player_id, opponent_id)

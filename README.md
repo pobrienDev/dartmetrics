@@ -208,6 +208,12 @@ re-enter.
   darts for both sides and those darts count toward the opponent's
   career statistics, so that needs their consent. An invite flow is
   planned for V1.
+- **Statistics are private too.** A player's career statistics and
+  head-to-head records are readable by the profile's owner (for a
+  guest, the account that created it) and by anyone who shares a match
+  with that player; everyone else gets `403 FORBIDDEN`. The opponent
+  picker lists only your own guests, so a guest named after a family
+  member never shows up in another account's list.
 - **The access token is kept in `localStorage`.** That makes it readable
   by any script injected into the page. React escapes all rendered
   values and the app never renders raw HTML, and the token expires after

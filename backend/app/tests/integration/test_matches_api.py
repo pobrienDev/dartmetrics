@@ -304,6 +304,22 @@ def test_registered_player_cannot_be_chosen_as_opponent(client, setup):
     assert client.get("/api/v1/matches", headers=opp_headers).json()["total"] == 0
 
 
+def test_another_accounts_guest_cannot_be_chosen_as_opponent(client, setup):
+    other_headers = signup(client, "other@example.com", "Other")
+    their_guest = client.post(
+        "/api/v1/players",
+        json={"display_name": "Their Guest", "is_guest": True},
+        headers=other_headers,
+    ).json()
+    response = client.post(
+        "/api/v1/matches",
+        json={"opponent_player_id": their_guest["id"], "best_of_legs": 1},
+        headers=setup["headers"],
+    )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INVALID_MATCH_SETUP"
+
+
 def legacy_match(db_session, creator_email: str, player1_id: str, player2_id: str) -> str:
     """A match between two registered profiles, inserted directly: rows
     like this exist from before such opponents were refused, and the

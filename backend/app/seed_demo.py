@@ -172,7 +172,12 @@ def seed(session: Session, reset: bool, seed_value: int) -> None:
     guests: dict[str, Player] = {}
     for name in ("Jordan", "Riley"):
         guest = session.scalar(
-            select(Player).where(Player.display_name == name, Player.user_id.is_(None), Player.bot_difficulty.is_(None))
+            select(Player).where(
+                Player.display_name == name,
+                Player.user_id.is_(None),
+                Player.bot_difficulty.is_(None),
+                Player.created_by_user_id == user.id,
+            )
         )
         guests[name] = guest or create_player(session, user, name, None, is_guest=True)
     bots = {b.bot_difficulty: b for b in list_bots(session)}

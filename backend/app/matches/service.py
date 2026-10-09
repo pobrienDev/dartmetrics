@@ -95,6 +95,10 @@ def create_match(
             "Only guests and bots can be chosen as opponents; a registered "
             "player's statistics are their own."
         )
+    if not opponent.is_bot and opponent.created_by_user_id != user.id:
+        raise InvalidMatchSetup(
+            "That guest belongs to another account; create your own guest."
+        )
 
     starter_id = starting_player_id or own_player.id
     if starter_id not in (own_player.id, opponent.id):

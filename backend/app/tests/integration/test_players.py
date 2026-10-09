@@ -132,17 +132,36 @@ def test_list_players_with_search(client, headers):
             headers=headers,
         )
 
+    # Guests only: the caller's own profile is not an opponent choice.
     mine = client.get("/api/v1/players?q=zetest", headers=headers).json()
-    assert [p["display_name"] for p in mine] == [
-        "Zetest Gary",
-        "Zetest Gina",
-        "Zetest Patrick",
-    ]
+    assert [p["display_name"] for p in mine] == ["Zetest Gary", "Zetest Gina"]
 
-    narrower = client.get("/api/v1/players?q=zetest g", headers=headers).json()
-    assert [p["display_name"] for p in narrower] == ["Zetest Gary", "Zetest Gina"]
+    narrower = client.get("/api/v1/players?q=zetest gi", headers=headers).json()
+    assert [p["display_name"] for p in narrower] == ["Zetest Gina"]
 
     assert client.get("/api/v1/players").status_code == 401
+
+
+def test_list_players_shows_only_the_callers_own_guests(client, headers):
+    """A guest named after a family member must not appear in every
+    other account's opponent picker."""
+    client.post(
+        "/api/v1/players",
+        json={"display_name": "Zetest Mum", "is_guest": True},
+        headers=headers,
+    )
+    other_headers = signup(client, "other@example.com", "Other")
+    client.post("/api/v1/players", json={"display_name": "Other"}, headers=other_headers)
+    client.post(
+        "/api/v1/players",
+        json={"display_name": "Zetest Dad", "is_guest": True},
+        headers=other_headers,
+    )
+
+    mine = client.get("/api/v1/players?q=zetest", headers=headers).json()
+    assert [p["display_name"] for p in mine] == ["Zetest Mum"]
+    theirs = client.get("/api/v1/players?q=zetest", headers=other_headers).json()
+    assert [p["display_name"] for p in theirs] == ["Zetest Dad"]
 
 
 def test_empty_display_name_rejected(client, headers):

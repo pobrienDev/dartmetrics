@@ -24,14 +24,25 @@ def create_player(
     is_guest: bool,
 ) -> Player:
     if is_guest:
-        player = Player(user_id=None, display_name=display_name, nickname=nickname)
+        # A guest is scored by, listed to, and readable by its creator only.
+        player = Player(
+            user_id=None,
+            created_by_user_id=user.id,
+            display_name=display_name,
+            nickname=nickname,
+        )
     else:
         existing = session.scalar(select(Player).where(Player.user_id == user.id))
         if existing is not None:
             raise PlayerProfileExists(
                 "This account already has a player profile."
             )
-        player = Player(user_id=user.id, display_name=display_name, nickname=nickname)
+        player = Player(
+            user_id=user.id,
+            created_by_user_id=user.id,
+            display_name=display_name,
+            nickname=nickname,
+        )
 
     session.add(player)
     session.flush()
@@ -70,12 +81,17 @@ def list_bots(session: Session) -> list[Player]:
 
 
 def list_players(
-    session: Session, query: str | None, limit: int
+    session: Session, user: User, query: str | None, limit: int
 ) -> list[Player]:
-    """Active human players, optionally filtered by name, for opponent
-    pickers. Bots are listed separately by list_bots."""
+    """The caller's own active guests, optionally filtered by name, for
+    the opponent picker. Other accounts' guests are theirs to see, and
+    registered profiles cannot be chosen as opponents (see
+    matches.service.create_match). Bots are listed by list_bots."""
     stmt = select(Player).where(
-        Player.is_active.is_(True), Player.bot_difficulty.is_(None)
+        Player.is_active.is_(True),
+        Player.bot_difficulty.is_(None),
+        Player.user_id.is_(None),
+        Player.created_by_user_id == user.id,
     )
     if query:
         stmt = stmt.where(Player.display_name.ilike(f"%{query}%"))

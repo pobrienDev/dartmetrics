@@ -36,6 +36,13 @@ class Player(Base):
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("users.id"), nullable=True
     )
+    # Who made this row. For a guest this is the account that scores for
+    # them: only that account lists them as an opponent and reads their
+    # statistics. NULL for the shared bots and for guests from before the
+    # column existed that never appeared in a match.
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
     display_name: Mapped[str] = mapped_column(String(100), nullable=False)
     nickname: Mapped[str | None] = mapped_column(String(100), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
