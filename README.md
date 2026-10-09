@@ -32,9 +32,10 @@
   Halve It (house rules, nine rounds, start on 40). Rules for the
   latter two are specified in [docs/GAME_MODES.md](docs/GAME_MODES.md).
 - **Per-dart scoring.** Every dart is stored, not just visit totals, so
-  three-dart averages, first-nine averages, checkout percentages,
-  highest visits and 180 counts are derived from the raw throws and can
-  always be recomputed.
+  three-dart averages, checkout percentages, highest visits and 180
+  counts are derived from the raw throws and can always be recomputed.
+  The API also computes first-nine averages, leg win rates, best legs
+  and head-to-head records; those are not shown in the UI yet.
 - **Live scoring that helps.** The score counts down as each dart goes
   in, a checkout suggestion appears whenever a finish is on, and busts,
   180s and checkouts each get their moment. Undo removes the last visit
