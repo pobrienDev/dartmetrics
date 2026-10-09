@@ -12,7 +12,17 @@ like any other player's.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, String, Uuid, func
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    Uuid,
+    func,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -30,10 +40,32 @@ class Player(Base):
             "('noob', 'easy', 'medium', 'hard', 'pro')",
             name="bot_difficulty_valid",
         ),
+        # One profile per account and one bot per difficulty, enforced by
+        # the database: the select-then-insert in the service cannot stop
+        # two concurrent first requests from both inserting.
+        Index(
+            "uq_players_user_id",
+            "user_id",
+            unique=True,
+            postgresql_where=text("user_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_players_bot_difficulty",
+            "bot_difficulty",
+            unique=True,
+            postgresql_where=text("bot_difficulty IS NOT NULL"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id"), nullable=True
+    )
+    # Who made this row. For a guest this is the account that scores for
+    # them: only that account lists them as an opponent and reads their
+    # statistics. NULL for the shared bots and for guests from before the
+    # column existed that never appeared in a match.
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("users.id"), nullable=True
     )
     display_name: Mapped[str] = mapped_column(String(100), nullable=False)

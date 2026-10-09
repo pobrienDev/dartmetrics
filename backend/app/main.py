@@ -21,6 +21,7 @@ from app.matches.router import router as matches_router
 from app.players.router import router as players_router
 from app.statistics.router import router as statistics_router
 from app.common.errors import DomainError
+from app.common.headers import SecurityHeadersMiddleware
 from app.common.ratelimit import limiter
 from app.config import get_settings
 from app.db import get_db
@@ -31,7 +32,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title=f"{settings.app_name} API",
         version="0.1.0",
-        description="Darts 501 scoring and player analytics.",
+        description="Darts scoring (501, Cricket, Halve It) and player analytics.",
     )
 
     # Rate limiting: slowapi keeps counters in process memory, which is
@@ -39,6 +40,9 @@ def create_app() -> FastAPI:
     # limits (see app/auth/router.py).
     limiter.enabled = settings.rate_limit_enabled
     app.state.limiter = limiter
+
+    # CSP and friends on every response (see app/common/headers.py).
+    app.add_middleware(SecurityHeadersMiddleware)
 
     if settings.cors_origin_list:
         app.add_middleware(
@@ -68,16 +72,19 @@ def create_app() -> FastAPI:
     @app.exception_handler(RateLimitExceeded)
     def handle_rate_limit(request: Request, exc: RateLimitExceeded) -> JSONResponse:
         """Too many attempts from one client — same envelope shape as
-        every other error so the frontend needs no special case."""
+        every other error so the frontend needs no special case. The
+        wait comes from the limit that tripped (its window, e.g. 60 s
+        for 10/minute, 3600 s for 5/hour), not a hard-coded minute."""
+        window = exc.limit.limit.get_expiry()
         return JSONResponse(
             status_code=429,
             content={
                 "error": {
                     "code": "RATE_LIMITED",
-                    "message": "Too many attempts; please wait a minute and try again.",
+                    "message": f"Too many attempts; please wait {_describe_wait(window)} and try again.",
                 }
             },
-            headers={"Retry-After": "60"},
+            headers={"Retry-After": str(window)},
         )
 
     @app.exception_handler(IntegrityError)
@@ -119,6 +126,16 @@ def create_app() -> FastAPI:
         _mount_frontend(app, settings.static_path)
 
     return app
+
+
+def _describe_wait(seconds: int) -> str:
+    if seconds % 3600 == 0:
+        hours = seconds // 3600
+        return "an hour" if hours == 1 else f"{hours} hours"
+    if seconds % 60 == 0:
+        minutes = seconds // 60
+        return "a minute" if minutes == 1 else f"{minutes} minutes"
+    return f"{seconds} seconds"
 
 
 class _ImmutableStaticFiles(StaticFiles):

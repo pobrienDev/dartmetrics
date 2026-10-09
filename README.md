@@ -7,7 +7,7 @@
 <p align="center">
   <strong>Every dart, counted.</strong><br />
   501, Cricket and Halve It scored dart by dart, with the averages, checkouts
-  and 180s that fall out of the raw throws. Play a friend, a guest, or one of
+  and 180s that fall out of the raw throws. Play a guest (a friend without an account) or one of
   five bots.
 </p>
 
@@ -32,12 +32,15 @@
   Halve It (house rules, nine rounds, start on 40). Rules for the
   latter two are specified in [docs/GAME_MODES.md](docs/GAME_MODES.md).
 - **Per-dart scoring.** Every dart is stored, not just visit totals, so
-  three-dart averages, first-nine averages, checkout percentages,
-  highest visits and 180 counts are derived from the raw throws and can
-  always be recomputed.
+  three-dart averages, checkout percentages, highest visits and 180
+  counts are derived from the raw throws and can always be recomputed.
+  The API also computes first-nine averages, leg win rates, best legs
+  and head-to-head records; those are not shown in the UI yet.
 - **Live scoring that helps.** The score counts down as each dart goes
   in, a checkout suggestion appears whenever a finish is on, and busts,
-  180s and checkouts each get their moment. Undo removes the last visit.
+  180s and checkouts each get their moment. Undo removes the last visit
+  of the leg in play; a leg-winning visit cannot be undone once the
+  next leg has started (completed legs are immutable).
 - **Five bot opponents**, Noob to Pro, driven by a pure throw simulator
   with tuned accuracy tables. Bot visits go through the same rules and
   statistics as human ones.
@@ -100,8 +103,12 @@ Three ideas hold it together:
   few rules only to decide when a visit is complete, and re-renders from
   the server's answer.
 - **Store raw events, derive statistics.** `dart_throws` → `turns` →
-  `legs` → `matches`. Nothing aggregated is stored, so every statistic
-  can be recomputed and audited, and new ones need no migration.
+  `legs` → `matches`. Career statistics are computed from the raw darts
+  at query time, so every number can be recomputed and audited, and a
+  new statistic needs no migration. One per-leg snapshot table
+  (`leg_player_states`: remaining score, darts thrown, Cricket marks,
+  Halve It totals) is kept as a cache for the live scoreboard and as
+  the row that scoring locks; undo restores it from the raw turns.
 - **The database defends the rules.** Check constraints reject a fourth
   dart, a bust that changes the score, or a remaining score of 1, even
   if application code is bypassed.
@@ -132,9 +139,13 @@ DartMetrics implements standard steel-tip **501, straight-in, double-out**:
   winner is the first to `floor(N/2) + 1` legs.
 
 The full rule interpretation, entity model, and acceptance cases live in
-the Phase 0 specification; the scoring engine's unit tests mirror its
-acceptance matrix one-to-one (`app/tests/unit/test_engine.py`, cases
-S01–S16).
+the Phase 0 specification, a design document kept outside the repository.
+Its acceptance matrix (cases S01–S16) is covered across the engine and
+API tests: S01–S14 and the engine-level half of S16 in
+`app/tests/unit/test_engine.py`, S15 (no fourth dart) by
+`test_four_darts_is_422` and the request-level half of S16 (no darts
+against a completed match) by `test_scoring_completed_match_is_409`,
+both in `app/tests/integration/test_matches_api.py`.
 
 ## Bot opponents
 
@@ -152,7 +163,7 @@ dart lands from the difficulty's accuracy table. Missed triples
 mostly drop into the big single; wilder misses stray into
 neighbouring segments, landing in the neighbour's ring only about as
 often as the bot hits the ring it aimed at; the worst bots sometimes
-miss the board. Aiming at T20, the bots average about 24, 40, 63, 81
+miss the board. Aiming at T20, the bots average about 24, 40, 61, 80
 and 100 per three darts respectively.
 
 Bot visits are recorded through the same turn service as human ones
@@ -187,9 +198,16 @@ re-enter.
   requests per minute per client IP for login and register, tunable via
   `AUTH_RATE_LIMIT`). Argon2 verification is deliberately slow, so without
   a limit those two routes are both a brute-force and a CPU-exhaustion
-  target. Over the limit returns `429 RATE_LIMITED` with `Retry-After`.
+  target; both also cap passwords at 128 characters for the same reason.
+  Over the limit returns `429 RATE_LIMITED` with `Retry-After`.
   Counters live in process memory, which suits a single API instance;
   a shared store would be needed to scale out.
+- **Login hides which emails exist** (one message, and a dummy hash is
+  verified when the account is unknown, so timing matches), but
+  **register says when an email is taken** (`409 EMAIL_ALREADY_REGISTERED`).
+  That is a deliberate usability trade-off: a generic answer would leave
+  someone who already has an account guessing why sign-up fails, and the
+  rate limit bounds how fast the endpoint can be probed.
 - **The placeholder `SECRET_KEY` is refused at startup**, as is any key
   under 32 characters, so a copied `.env.example` cannot go to production
   with forgeable tokens.
@@ -199,36 +217,61 @@ re-enter.
 - **Match state and summaries are private** to the creator and the
   players in the match, the same rule that governs recording visits.
   Other signed-in users get `403 MATCH_ACCESS_DENIED`.
+- **Opponents are guests or bots.** Another account's profile cannot be
+  chosen as an opponent (`400 INVALID_MATCH_SETUP`): the creator enters
+  darts for both sides and those darts count toward the opponent's
+  career statistics, so that needs their consent. An invite flow is
+  planned for V1.
+- **Statistics are private too.** A player's career statistics and
+  head-to-head records are readable by the profile's owner (for a
+  guest, the account that created it) and by anyone who shares a match
+  with that player; everyone else gets `403 FORBIDDEN`. The opponent
+  picker lists only your own guests, so a guest named after a family
+  member never shows up in another account's list.
 - **The access token is kept in `localStorage`.** That makes it readable
   by any script injected into the page. React escapes all rendered
-  values and the app never renders raw HTML, and the token expires after
-  8 hours. Moving to an HttpOnly cookie is planned for V1 alongside
-  refresh tokens, since it also needs CSRF protection.
+  values and the app never renders raw HTML, the token expires after
+  8 hours, and every response carries a Content-Security-Policy that
+  allows scripts from the app's own origin only (styles and fonts also
+  from Google Fonts), plus `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY` / `frame-ancestors 'none'` and a
+  Referrer-Policy (`app/common/headers.py`; `/docs` is exempt from the
+  CSP because Swagger UI loads from a CDN). Moving to an HttpOnly
+  cookie is planned for V1 alongside refresh tokens, since it also
+  needs CSRF protection.
 - **The OpenAPI docs (`/docs`) are public on purpose** — the API surface
-  is documented, not secret, and every route needs a valid token.
+  is documented, not secret, and every route except health, readiness,
+  register and login needs a valid token.
 - **Behind a reverse proxy**, run uvicorn with `--proxy-headers` and
   `--forwarded-allow-ips` so the rate limiter sees real client
-  addresses. TLS termination and security headers (HSTS etc.) belong to
-  that proxy layer.
+  addresses. TLS termination and HSTS belong to that proxy layer; the
+  other security headers come from the app itself (above).
 
 ## Local development
 
-Requirements: Python 3.12+, Node.js 20+, Docker Desktop.
+Requirements: Python 3.12+, [uv](https://docs.astral.sh/uv/), Node.js 22.22+ or
+24.15+ (the test dependencies, jsdom and jest-dom, need it; CI and the
+image use 24), Docker Desktop.
 
 ```bash
-# 1. Configuration (defaults work for local development)
+# 1. Configuration: copy the example, then set a real SECRET_KEY in .env.
+#    The placeholder is refused at startup; the other values work as-is.
 cp .env.example .env            # Windows: copy .env.example .env
+python -c "import secrets; print(secrets.token_urlsafe(32))"   # paste into .env as SECRET_KEY
 
 # 2. Start PostgreSQL
 docker compose up -d
 
-# 3. Backend
+# 3. Backend. uv installs exactly the versions in uv.lock, the same set CI
+#    tests and the Docker image ships (https://docs.astral.sh/uv/).
 cd backend
-python -m venv .venv
-.venv/bin/pip install -e . --group dev      # Windows: .venv\Scripts\pip ...
+uv sync --locked --group dev                # creates .venv; Windows: same command
 .venv/bin/alembic upgrade head
-.venv/bin/pytest                            # 265 tests; integration tests skip without PostgreSQL
+.venv/bin/pytest                            # 287 tests; integration tests skip without PostgreSQL
 .venv/bin/uvicorn app.main:app --reload     # http://localhost:8000, docs at /docs
+#    Without uv: python -m venv .venv && .venv/bin/python -m pip install --upgrade pip
+#    && .venv/bin/pip install -e . --group dev (pip 25.1+; resolves fresh, not from the lock).
+#    Changing a dependency in pyproject.toml: run `uv lock` and commit uv.lock.
 
 # 4. Frontend (second terminal)
 cd frontend

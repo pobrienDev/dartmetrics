@@ -43,8 +43,8 @@ def list_players(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[PlayerResponse]:
-    """Active players for opponent selection, optionally filtered by name."""
-    return service.list_players(db, query=q, limit=limit)
+    """Your guests, for opponent selection, optionally filtered by name."""
+    return service.list_players(db, user=current_user, query=q, limit=limit)
 
 
 @router.get("/bots", response_model=list[PlayerResponse])
@@ -53,9 +53,7 @@ def list_bots(
     current_user: User = Depends(get_current_user),
 ) -> list[PlayerResponse]:
     """Computer opponents, easiest (noob) to hardest (pro)."""
-    bots = service.list_bots(db)
-    db.commit()
-    return bots
+    return service.list_bots(db)
 
 
 @router.get("/{player_id}", response_model=PlayerResponse)

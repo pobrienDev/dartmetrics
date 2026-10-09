@@ -13,10 +13,15 @@ import { RegisterPage } from './pages/RegisterPage'
 
 const queryClient = new QueryClient()
 
+// Cached data belongs to the signed-in user; drop all of it when the
+// session ends so a second person signing in on the same tab starts
+// from an empty cache.
+const clearCache = () => queryClient.clear()
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
+      <AuthProvider onSignOut={clearCache}>
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />

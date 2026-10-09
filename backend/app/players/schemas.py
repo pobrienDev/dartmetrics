@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class PlayerCreateRequest(BaseModel):
@@ -17,6 +17,16 @@ class PlayerCreateRequest(BaseModel):
 class PlayerUpdateRequest(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=100)
     nickname: str | None = Field(default=None, max_length=100)
+
+    @field_validator("display_name")
+    @classmethod
+    def display_name_is_not_null(cls, value: str | None) -> str | None:
+        """Omit the field to keep the current name. An explicit null used
+        to pass through to the NOT NULL column and surface as a
+        misleading 409 CONFLICT; it is a validation error."""
+        if value is None:
+            raise ValueError("display_name cannot be null; omit it to keep the current name.")
+        return value
 
 
 class PlayerResponse(BaseModel):

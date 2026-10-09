@@ -37,6 +37,12 @@ import { GAME_CHIP, GAME_LABELS } from '../utils/games'
 interface RecentVisit {
   turn: TurnSummary
   labels: string
+  // Halve It only: the player's running total before and after the
+  // round. The server stores every Halve It turn with points_scored 0
+  // (the total lives in the leg state), so the row is rendered from
+  // these instead.
+  scoreBefore?: number | null
+  scoreAfter?: number | null
 }
 
 type Moment = 'bust' | 'oneEighty' | 'ton' | 'checkout' | null
@@ -81,6 +87,7 @@ export function LiveScoringPage() {
   const [banner, setBanner] = useState<{ text: string; moment: Moment } | null>(null)
   const [flash, setFlash] = useState<Flash | null>(null)
   const [recentTurns, setRecentTurns] = useState<RecentVisit[]>([])
+  const [confirmAbandon, setConfirmAbandon] = useState(false)
 
   const matchQuery = useQuery({
     queryKey: ['match', matchId],
@@ -122,9 +129,14 @@ export function LiveScoringPage() {
     const oldScore = before?.players.find(
       (p) => p.player_id === response.turn.player_id,
     )?.score
+    const newScore = response.state.players.find(
+      (p) => p.player_id === response.turn.player_id,
+    )?.score
     queryClient.setQueryData(['match', matchId], response.state)
     const labels = visitDarts.map(dartLabel).join(' ')
-    setRecentTurns((prev) => [{ turn: response.turn, labels }, ...prev].slice(0, 5))
+    setRecentTurns((prev) =>
+      [{ turn: response.turn, labels, scoreBefore: oldScore, scoreAfter: newScore }, ...prev].slice(0, 5),
+    )
     setDarts([])
     setMultiplier('single')
     const turn = response.turn
@@ -132,9 +144,6 @@ export function LiveScoringPage() {
     const threw = isYou ? 'You threw' : `${who} threw`
 
     if (response.state.game_type === 'halve_it' && !turn.is_checkout) {
-      const newScore = response.state.players.find(
-        (p) => p.player_id === turn.player_id,
-      )?.score
       if (oldScore != null && newScore != null) {
         if (newScore < oldScore) {
           celebrate('bust', turn.player_id)
@@ -189,6 +198,10 @@ export function LiveScoringPage() {
     onError: (err) => {
       setDarts([])
       show(err instanceof ApiError ? err.message : 'Something went wrong.', 'bust')
+      // Whatever went wrong, the board on the server is the truth:
+      // NOT_PLAYER_TURN or CONFLICT means it moved on, so resync
+      // rather than let the darts be re-entered against stale state.
+      queryClient.invalidateQueries({ queryKey: ['match', matchId] })
     },
   })
 
@@ -198,19 +211,22 @@ export function LiveScoringPage() {
     onSuccess: (response) =>
       applyVisit(response, response.darts, activePlayer ? shortName(activePlayer) : 'Bot'),
     onError: (err) => {
-      // NOT_BOT_TURN just means the board moved on; a refetch resyncs.
-      if (err instanceof ApiError && err.code === 'NOT_BOT_TURN') {
-        queryClient.invalidateQueries({ queryKey: ['match', matchId] })
-        return
-      }
+      // Resync on any failure. NOT_BOT_TURN just means the board moved
+      // on; anything else (a network blip, a 5xx, a CONFLICT) leaves
+      // the bot waiting for the "Try again" button below, since the
+      // effect only re-runs when the board or the attempt changes.
+      queryClient.invalidateQueries({ queryKey: ['match', matchId] })
+      if (err instanceof ApiError && err.code === 'NOT_BOT_TURN') return
       show(err instanceof ApiError ? err.message : 'Something went wrong.', 'bust')
     },
   })
 
   // Let the bot throw after a beat whenever it is up. The ref stops a
   // second request while one is in flight (state updates re-run the
-  // effect before the mutation's pending flag flips).
+  // effect before the mutation's pending flag flips). botAttempt is the
+  // manual retry path after a failed bot visit.
   const botRequestInFlight = useRef(false)
+  const [botAttempt, setBotAttempt] = useState(0)
   useEffect(() => {
     if (!botIsUp || botRequestInFlight.current) return
     const timer = setTimeout(() => {
@@ -224,7 +240,7 @@ export function LiveScoringPage() {
     return () => clearTimeout(timer)
     // botVisit is a stable mutation handle; only the board matters here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [botIsUp, state])
+  }, [botIsUp, state, botAttempt])
 
   const undoVisit = useMutation({
     mutationFn: () =>
@@ -243,6 +259,23 @@ export function LiveScoringPage() {
       show('Last visit undone.')
     },
     onError: (err) => show(err instanceof ApiError ? err.message : 'Something went wrong.', 'bust'),
+  })
+
+  // Ending a match without a winner lists it as cancelled; it leaves the
+  // dashboard's resume list and the history's filters, so those refetch.
+  const abandonMatch = useMutation({
+    mutationFn: () =>
+      api<MatchState>(`/api/v1/matches/${matchId}/abandon`, { method: 'POST' }),
+    onSuccess: (newState) => {
+      queryClient.setQueryData(['match', matchId], newState)
+      queryClient.invalidateQueries({ queryKey: ['matches'] })
+      setConfirmAbandon(false)
+      show('Match abandoned.')
+    },
+    onError: (err) => {
+      setConfirmAbandon(false)
+      show(err instanceof ApiError ? err.message : 'Something went wrong.', 'bust')
+    },
   })
 
   function addDart(rawDart: DartRequest) {
@@ -297,7 +330,7 @@ export function LiveScoringPage() {
   return (
     <div className="min-h-screen bg-ink-950">
       <header className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3 sm:px-6">
-        <Link to="/" className="btn-ghost -ml-2 px-2 py-1 text-sm">
+        <Link to="/" className="btn-ghost -ml-2 min-h-11 px-2 py-1 text-sm">
           ← Dashboard
         </Link>
         <span className="flex items-center gap-2 text-sm text-ink-400">
@@ -306,8 +339,39 @@ export function LiveScoringPage() {
           </span>
           Best of {state.best_of_legs}
           {state.current_leg ? ` · Leg ${state.current_leg.leg_number}` : ''}
+          {!finished && (
+            <button
+              onClick={() => setConfirmAbandon(true)}
+              disabled={confirmAbandon || abandonMatch.isPending}
+              className="btn-ghost min-h-11 px-2 py-1 text-sm"
+            >
+              Abandon match
+            </button>
+          )}
         </span>
       </header>
+
+      {confirmAbandon && !finished && (
+        <div
+          role="alertdialog"
+          aria-label="Abandon this match?"
+          className="mx-auto mb-2 flex max-w-3xl flex-wrap items-center justify-between gap-3 rounded-xl border border-bust-700/60 bg-bust-900/40 px-4 py-3 text-sm sm:mx-6"
+        >
+          <span>End this match without a winner? It will be listed as cancelled.</span>
+          <span className="flex gap-2">
+            <button
+              onClick={() => abandonMatch.mutate()}
+              disabled={abandonMatch.isPending}
+              className="btn-primary min-h-11 px-3 py-2 text-sm"
+            >
+              {abandonMatch.isPending ? 'Ending…' : 'Yes, abandon'}
+            </button>
+            <button onClick={() => setConfirmAbandon(false)} className="btn-secondary min-h-11 px-3 py-2 text-sm">
+              Keep playing
+            </button>
+          </span>
+        </div>
+      )}
 
       {/* Scoreboard */}
       <div className="mx-auto grid max-w-3xl grid-cols-2 gap-3 px-4 py-2 sm:gap-4 sm:px-6">
@@ -446,13 +510,23 @@ export function LiveScoringPage() {
           <p role="status" className="py-10 text-center text-xl text-ink-300">
             {botVisit.isPending
               ? `${activePlayer ? shortName(activePlayer) : 'Bot'} is throwing…`
-              : `${activePlayer ? shortName(activePlayer) : 'Bot'} is stepping up…`}
+              : botVisit.isError
+                ? `${activePlayer ? shortName(activePlayer) : 'Bot'} could not throw.`
+                : `${activePlayer ? shortName(activePlayer) : 'Bot'} is stepping up…`}
           </p>
-          <div className="flex justify-center">
+          <div className="flex justify-center gap-2">
+            {botVisit.isError && (
+              <button
+                onClick={() => setBotAttempt((n) => n + 1)}
+                className="btn-primary min-h-11 px-3 py-2.5 text-sm"
+              >
+                Try again
+              </button>
+            )}
             <button
               onClick={() => undoVisit.mutate()}
               disabled={undoVisit.isPending || botVisit.isPending}
-              className="btn-secondary px-3 py-2.5 text-sm"
+              className="btn-secondary min-h-11 px-3 py-2.5 text-sm"
             >
               Undo my last visit
             </button>
@@ -483,14 +557,16 @@ export function LiveScoringPage() {
               <button
                 onClick={() => setDarts(darts.slice(0, -1))}
                 disabled={darts.length === 0}
-                className="btn-secondary px-3 py-2.5 text-sm"
+                className="btn-secondary min-h-11 px-3 py-2.5 text-sm"
               >
                 ⌫ Dart
               </button>
               <button
                 onClick={() => undoVisit.mutate()}
-                disabled={undoVisit.isPending}
-                className="btn-secondary px-3 py-2.5 text-sm"
+                // Not while a visit is being submitted: the undo would
+                // race it on the server and remove the previous visit.
+                disabled={undoVisit.isPending || submitVisit.isPending}
+                className="btn-secondary min-h-11 px-3 py-2.5 text-sm"
               >
                 Undo visit
               </button>
@@ -527,7 +603,7 @@ export function LiveScoringPage() {
                 <button
                   key={b}
                   onClick={() => setBand(b)}
-                  className={`rounded-xl py-2.5 text-xs font-bold uppercase tracking-wider transition ${
+                  className={`min-h-11 rounded-xl py-2.5 text-xs font-bold uppercase tracking-wider transition ${
                     band === b ? 'bg-sky-600 text-white' : 'bg-ink-800 text-ink-300 hover:bg-ink-700'
                   }`}
                 >
@@ -538,7 +614,9 @@ export function LiveScoringPage() {
           )}
 
           {/* Number pad: 5 columns on phones keeps every key at a
-              comfortable thumb size; 7 columns from tablet up. */}
+              comfortable thumb size; 7 columns from tablet up. Every
+              control on this screen is at least 44px tall: min-h-11 on
+              the smaller buttons, more on the pad and multiplier row. */}
           <div className="grid grid-cols-5 gap-2 sm:grid-cols-7">
             {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => (
               <button
@@ -586,10 +664,13 @@ function RecentVisits({
     <div className="mt-6">
       <p className="label">Recent visits</p>
       <ul className="space-y-1 text-sm">
-        {turns.map(({ turn, labels }) => {
+        {turns.map(({ turn, labels, scoreBefore, scoreAfter }) => {
           const who = state.players.find((p) => p.player_id === turn.player_id)
           // Halve It: a round either adds its qualifying points or halves.
-          const halved = isHalveIt && turn.points_scored === 0 && !turn.is_checkout
+          // Judged from the running total, not points_scored (always 0).
+          const delta =
+            isHalveIt && scoreBefore != null && scoreAfter != null ? scoreAfter - scoreBefore : null
+          const halved = delta != null && delta < 0
           const tone = turn.is_bust || halved
             ? 'text-bust-400'
             : turn.is_checkout
@@ -610,7 +691,13 @@ function RecentVisits({
                   <>
                     {labels}
                     {'  '}
-                    {halved ? 'HALVED' : `+${turn.points_scored}`}
+                    {halved ? 'HALVED' : delta != null ? `+${delta}` : ''}
+                    {scoreBefore != null && scoreAfter != null && (
+                      <>
+                        {'  '}
+                        <span className="text-ink-500">({scoreBefore} → {scoreAfter})</span>
+                      </>
+                    )}
                   </>
                 ) : (
                   <>

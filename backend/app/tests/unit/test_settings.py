@@ -1,5 +1,7 @@
 """Startup configuration guards, CORS wiring, and production static serving."""
 
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
@@ -158,7 +160,103 @@ def test_frontend_build_is_served_alongside_the_api(app_with_env, frontend_build
 
 
 def test_frontend_serving_never_escapes_the_build_directory(app_with_env, frontend_build):
+    """A sentinel sits next to the build directory. A plain /../ would be
+    normalised away by the HTTP client before it is ever sent, so the
+    request uses an encoded separator, which reaches the handler as a
+    real '../' path parameter; the direct call covers the handler too."""
+    secret = frontend_build.parent / "secret.txt"
+    secret.write_text("not for serving")
+    app = app_with_env(STATIC_DIR=str(frontend_build))
+    client = TestClient(app)
+
+    for path in ("/..%2fsecret.txt", "/%2e%2e/secret.txt"):
+        response = client.get(path)
+        assert response.status_code == 200, path
+        assert "not for serving" not in response.text, path
+        assert "id=root" in response.text, path  # fell back to the app shell
+
+    # Through the hashed-assets mount, StaticFiles' own guard answers 404.
+    response = client.get("/assets%2f..%2f..%2fsecret.txt")
+    assert response.status_code == 404
+    assert "not for serving" not in response.text
+
+    # The guard itself, without the HTTP layer's own normalisation.
+    spa = next(r.endpoint for r in app.routes if getattr(r, "name", None) == "spa")
+    response = spa(full_path="../secret.txt")
+    assert Path(response.path) == frontend_build / "index.html"
+
+
+def test_frontend_serving_guard_is_what_stops_the_escape(app_with_env, frontend_build, monkeypatch):
+    """Proof the previous test can fail: with the is_relative_to check
+    neutralised, the same request serves the sentinel."""
+    secret = frontend_build.parent / "secret.txt"
+    secret.write_text("not for serving")
+    monkeypatch.setattr(Path, "is_relative_to", lambda self, other: True)
     client = TestClient(app_with_env(STATIC_DIR=str(frontend_build)))
-    response = client.get("/../pyproject.toml")
-    assert response.status_code == 200
-    assert 'id=root' in response.text  # fell back to the app shell
+    assert "not for serving" in client.get("/..%2fsecret.txt").text
+
+
+# --- Security headers ------------------------------------------------------
+
+
+def test_every_response_carries_the_security_headers(app_with_env, frontend_build):
+    """The token sits in localStorage, so the CSP is the safety net
+    against an injected script; the API serves the SPA, so it sends it."""
+    client = TestClient(app_with_env(STATIC_DIR=str(frontend_build)))
+
+    for path in ("/", "/matches/1234", "/api/v1/health", "/api/v1/does-not-exist"):
+        response = client.get(path)
+        csp = response.headers["content-security-policy"]
+        assert "default-src 'self'" in csp, path
+        assert "script-src 'self'" in csp
+        assert "style-src 'self' https://fonts.googleapis.com" in csp
+        assert "font-src 'self' https://fonts.gstatic.com" in csp
+        assert "frame-ancestors 'none'" in csp
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert response.headers["x-frame-options"] == "DENY"
+        assert response.headers["referrer-policy"] == "strict-origin-when-cross-origin"
+
+
+def test_api_docs_are_exempt_from_the_csp_only(app_with_env):
+    """Swagger UI loads from a CDN with inline scripts, so a CSP would
+    blank the page; the other headers still apply."""
+    client = TestClient(app_with_env())
+    for path in ("/docs", "/redoc"):
+        response = client.get(path)
+        assert response.status_code == 200, path
+        assert "content-security-policy" not in response.headers
+        assert response.headers["x-content-type-options"] == "nosniff"
+
+
+# --- Rate limit envelope ---------------------------------------------------
+
+
+def test_retry_after_follows_the_window_of_the_limit_that_tripped(app_with_env):
+    """The header and message used to say 60 seconds whatever the limit;
+    with AUTH_RATE_LIMIT=5/hour clients were told to retry too soon."""
+    from fastapi import Request
+
+    from app.common.ratelimit import limiter
+
+    app = app_with_env(RATE_LIMIT_ENABLED="1")
+    limiter.reset()
+
+    @app.get("/api/v1/_two-per-hour")
+    @limiter.limit("2/hour")
+    def probe(request: Request) -> dict[str, str]:  # slowapi keys on the Request
+        return {"ok": "yes"}
+
+    client = TestClient(app)
+    assert client.get("/api/v1/_two-per-hour").status_code == 200
+    assert client.get("/api/v1/_two-per-hour").status_code == 200
+    response = client.get("/api/v1/_two-per-hour")
+    limiter.reset()
+
+    assert response.status_code == 429
+    assert response.headers["Retry-After"] == "3600"
+    assert response.json() == {
+        "error": {
+            "code": "RATE_LIMITED",
+            "message": "Too many attempts; please wait an hour and try again.",
+        }
+    }

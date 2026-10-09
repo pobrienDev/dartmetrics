@@ -19,7 +19,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.auth.models import User
 from app.common.errors import (
@@ -72,8 +72,10 @@ def create_match(
     starting_player_id: uuid.UUID | None,
     game_type: GameType = GameType.X01,
 ) -> Match:
-    """Create a match between the user's player and an opponent, and
-    immediately start leg 1 at 501-501 (dev plan core workflow step 5)."""
+    """Create a match between the user's player and an opponent (one of
+    their guests, or a bot) and immediately start leg 1: 501-501, an
+    empty Cricket board, or 40-40 in Halve It (dev plan core workflow
+    step 5)."""
     own_player = session.scalar(select(Player).where(Player.user_id == user.id))
     if own_player is None:
         raise MissingPlayerProfile(
@@ -85,6 +87,20 @@ def create_match(
         raise PlayerNotFound(f"Player {opponent_player_id} does not exist.")
     if opponent.id == own_player.id:
         raise InvalidMatchSetup("You cannot play a match against yourself.")
+    if opponent.user_id is not None:
+        # Another account's profile needs that person's consent: whoever
+        # creates the match can enter darts for both sides, and those
+        # darts count toward the opponent's career statistics. Until an
+        # invite flow exists, opponents are guests (scored by the
+        # creator) or the shared bots.
+        raise InvalidMatchSetup(
+            "Only guests and bots can be chosen as opponents; a registered "
+            "player's statistics are their own."
+        )
+    if not opponent.is_bot and opponent.created_by_user_id != user.id:
+        raise InvalidMatchSetup(
+            "That guest belongs to another account; create your own guest."
+        )
 
     starter_id = starting_player_id or own_player.id
     if starter_id not in (own_player.id, opponent.id):
@@ -178,21 +194,29 @@ def list_matches(
         session.scalars(
             select(Match)
             .where(*conditions)
+            .options(selectinload(Match.legs))  # one query for the page's legs
             .order_by(Match.created_at.desc())
             .limit(limit)
             .offset(offset)
         )
     )
+    # ... and one for the page's players, instead of two per row.
+    player_ids = {pid for m in matches for pid in (m.player1_id, m.player2_id)}
+    names = {
+        pid: name
+        for pid, name in session.execute(
+            select(Player.id, Player.display_name).where(Player.id.in_(player_ids))
+        )
+    } if player_ids else {}
 
     items = []
     for match in matches:
         players = []
         for player_id in (match.player1_id, match.player2_id):
-            player = session.get(Player, player_id)
             players.append(
                 {
                     "player_id": player_id,
-                    "display_name": player.display_name,
+                    "display_name": names[player_id],
                     "legs_won": sum(
                         1 for leg in match.legs if leg.winner_player_id == player_id
                     ),
@@ -258,6 +282,40 @@ def get_match_for_user(session: Session, user: User, match_id: uuid.UUID) -> Mat
     match = get_match(session, match_id)
     ensure_match_access(session, user, match)
     return match
+
+
+def _lock_leg_states(session: Session, leg: Leg) -> dict[uuid.UUID, LegPlayerState]:
+    """SELECT ... FOR UPDATE on the leg's two state rows.
+
+    Every request that changes a leg (visit, bot visit, undo) takes this
+    lock first, so they run one at a time per leg: the second waits
+    here, then sees the committed turn count and gets a correct verdict
+    instead of colliding on turn_number (dev plan 8.2). populate_existing
+    makes SQLAlchemy overwrite rows already in the session with what the
+    lock just read; without it a row loaded before the lock keeps its
+    stale turn count and the lock protects nothing.
+    """
+    return {
+        s.player_id: s
+        for s in session.scalars(
+            select(LegPlayerState)
+            .where(LegPlayerState.leg_id == leg.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    }
+
+
+def _ensure_still_active(session: Session, match: Match, leg: Leg) -> None:
+    """Re-read match and leg status after the lock: a request that just
+    completed this leg or the match held the lock until it committed, so
+    a status read before the lock may be stale."""
+    session.refresh(match)
+    session.refresh(leg)
+    if match.status is not MatchStatus.IN_PROGRESS:
+        raise MatchNotActive(f"Match is {match.status}; scoring is not allowed.")
+    if leg.status is not LegStatus.IN_PROGRESS:
+        raise LegNotActive(f"Leg {leg.leg_number} is {leg.status}; scoring is not allowed.")
 
 
 def record_match_visit(
@@ -330,12 +388,10 @@ def record_bot_visit(
     if leg is None:
         raise LegNotActive("The match has no active leg.")
 
-    states = {
-        s.player_id: s
-        for s in session.scalars(
-            select(LegPlayerState).where(LegPlayerState.leg_id == leg.id)
-        )
-    }
+    # Lock before deciding whose turn it is; record_turn re-selects the
+    # same rows under the lock this transaction already holds.
+    states = _lock_leg_states(session, leg)
+    _ensure_still_active(session, match, leg)
     active_id = _expected_player_id(leg, sum(s.turns_taken for s in states.values()))
     active = session.get(Player, active_id)
     if not active.is_bot:
@@ -396,6 +452,12 @@ def undo_latest_visit(session: Session, user: User, match_id: uuid.UUID) -> Matc
     )
     if leg is None:
         raise LegNotActive("The match has no active leg.")
+
+    # Same lock as scoring: an undo tapped while a visit is in flight
+    # waits for it, then removes that visit (the latest) rather than an
+    # older one, which would leave a gap in the turn numbers.
+    _lock_leg_states(session, leg)
+    _ensure_still_active(session, match, leg)
 
     latest = _latest_turn(session, leg)
     if latest is None:
@@ -775,18 +837,8 @@ def record_turn(
     if player_id not in (match.player1_id, match.player2_id):
         raise PlayerNotInMatch(f"Player {player_id} is not in this match.")
 
-    # FOR UPDATE serializes concurrent scoring on the same leg (dev
-    # plan 8.2: "lock/read active match + leg"). A second concurrent
-    # visit waits here, then sees the updated turn count and gets a
-    # correct turn-order verdict instead of colliding on turn_number.
-    states = {
-        s.player_id: s
-        for s in session.scalars(
-            select(LegPlayerState)
-            .where(LegPlayerState.leg_id == leg.id)
-            .with_for_update()
-        )
-    }
+    states = _lock_leg_states(session, leg)
+    _ensure_still_active(session, match, leg)
     state = states[player_id]
     total_turns = sum(s.turns_taken for s in states.values())
     expected = _expected_player_id(leg, total_turns)

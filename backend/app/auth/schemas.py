@@ -20,7 +20,9 @@ class RegisterRequest(BaseModel):
 
 class LoginRequest(BaseModel):
     email: EmailStr
-    password: str
+    # Same cap as registration: Argon2 is deliberately slow, so an
+    # unbounded password would make login a CPU-exhaustion target.
+    password: str = Field(max_length=128)
 
 
 class TokenResponse(BaseModel):
@@ -37,3 +39,7 @@ class UserResponse(BaseModel):
     display_name: str
     is_active: bool
     created_at: datetime
+    # The user's own player profile, once created (POST /players); None
+    # until then. Lets the dashboard find its stats without scanning the
+    # paginated player list.
+    player_id: uuid.UUID | None = None

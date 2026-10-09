@@ -231,6 +231,48 @@ def test_head_to_head_ignores_matches_in_progress(client, setup):
     assert body["last_played_at"] is None
 
 
+def test_stats_are_private_to_the_owner_and_the_people_they_play(client, setup):
+    """Aggregates reveal the results of private matches, so they follow
+    the same rule: the profile's owner (or a guest's creator) and anyone
+    who shares a match with the player; everyone else gets 403."""
+    own, guest = setup["own"]["id"], setup["guest"]["id"]
+    play_match(client, setup, winner_id=own)
+
+    outsider = signup(client, "outsider@example.com", "Outsider")
+    client.post("/api/v1/players", json={"display_name": "Outsider"}, headers=outsider)
+    for path in (
+        f"/api/v1/players/{own}/stats",
+        f"/api/v1/players/{guest}/stats",
+        f"/api/v1/players/{own}/head-to-head/{guest}",
+    ):
+        response = client.get(path, headers=outsider)
+        assert response.status_code == 403, path
+        assert response.json()["error"]["code"] == "FORBIDDEN"
+
+    # The owner still sees both sides of their own matches.
+    assert client.get(f"/api/v1/players/{own}/stats", headers=setup["headers"]).status_code == 200
+    assert client.get(f"/api/v1/players/{guest}/stats", headers=setup["headers"]).status_code == 200
+    assert (
+        client.get(f"/api/v1/players/{own}/head-to-head/{guest}", headers=setup["headers"]).status_code
+        == 200
+    )
+
+
+def test_bot_stats_are_visible_to_anyone_who_has_played_it(client, setup):
+    bots = client.get("/api/v1/players/bots", headers=setup["headers"]).json()
+    bot_id = bots[0]["id"]
+
+    # Not yet played: no shared match, no access.
+    assert client.get(f"/api/v1/players/{bot_id}/stats", headers=setup["headers"]).status_code == 403
+
+    client.post(
+        "/api/v1/matches",
+        json={"opponent_player_id": bot_id, "best_of_legs": 1},
+        headers=setup["headers"],
+    )
+    assert client.get(f"/api/v1/players/{bot_id}/stats", headers=setup["headers"]).status_code == 200
+
+
 def test_head_to_head_with_self_is_400(client, setup):
     own = setup["own"]["id"]
     response = client.get(

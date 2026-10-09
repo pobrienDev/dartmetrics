@@ -1,7 +1,8 @@
 """Match persistence models (Phase 0 spec, sections 9-12, 17).
 
-A Match is the contest between exactly two players; a Leg is one race
-from 501 to 0 inside it; LegPlayerState tracks each player's remaining
+A Match is the contest between exactly two players; a Leg is one game
+inside it (a race from 501 to 0, a Cricket board to close, or nine
+Halve It rounds); LegPlayerState tracks each player's remaining
 score; a Turn is one visit of up to three darts; a DartThrow is the
 most granular scoring event. Database constraints enforce the spec's
 invariants where practical so bad states cannot be persisted even by
@@ -63,14 +64,16 @@ class Match(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    # Indexed: list_matches and the statistics access rule look matches
+    # up by creator and by either player; the list is ordered by created_at.
     created_by_user_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("users.id"), nullable=False
+        Uuid, ForeignKey("users.id"), nullable=False, index=True
     )
     player1_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("players.id"), nullable=False
+        Uuid, ForeignKey("players.id"), nullable=False, index=True
     )
     player2_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("players.id"), nullable=False
+        Uuid, ForeignKey("players.id"), nullable=False, index=True
     )
     best_of_legs: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     game_type: Mapped[GameType] = mapped_column(
@@ -97,7 +100,7 @@ class Match(Base):
         DateTime(timezone=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
     )
 
     legs: Mapped[list["Leg"]] = relationship(
@@ -220,8 +223,9 @@ class Turn(Base):
     leg_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("legs.id"), nullable=False
     )
+    # Indexed: every career statistic aggregates a player's turns.
     player_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("players.id"), nullable=False
+        Uuid, ForeignKey("players.id"), nullable=False, index=True
     )
     turn_number: Mapped[int] = mapped_column(Integer, nullable=False)
     turn_start_score: Mapped[int] = mapped_column(SmallInteger, nullable=False)

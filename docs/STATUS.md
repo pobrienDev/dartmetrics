@@ -16,17 +16,18 @@ history → career statistics.
   engine, per-dart schema (7 tables, Alembic migration `a838f4f2385a`),
   Argon2 auth + JWT, player profiles with ownership rules, transactional
   match/visit/undo/abandon API with row locking, match listing,
-  statistics + head-to-head. **130 tests** (unit + PostgreSQL
-  integration with rollback isolation).
+  statistics + head-to-head. **287 tests** (unit + PostgreSQL
+  integration with rollback isolation, plus two-connection lock tests).
 - **Frontend** (React 19 + TS + Vite + Tailwind v4): auth flow,
   dashboard with live KPI cards, new-match form, live scoring screen
   (5-column pad on phones, 7 on desktop; all touch targets ≥44px),
-  match history with filters/pagination. **25 Vitest/RTL tests** plus
-  **2 Playwright e2e** journeys.
-- **CI** (.github/workflows/ci.yml): backend-tests, frontend-tests,
-  e2e — three jobs with a PostgreSQL service. NOTE: pushed during a
-  GitHub Actions major outage on 2026-08-26; verify the run backlog
-  went green once Actions recovered.
+  match history with filters/pagination. **67 Vitest/RTL tests** plus
+  **3 Playwright e2e** journeys (501 vs guest, bot match + abandon,
+  login redirect).
+- **CI** (.github/workflows/ci.yml): backend-tests (with `alembic
+  check`), frontend-tests, e2e and docker-build — four jobs; the two
+  slow ones wait for the test jobs. Render deploys main only after the
+  checks pass (`autoDeployTrigger: checksPass`).
 
 ## Source-of-truth documents
 
@@ -45,7 +46,8 @@ visit-level). The README summarises the implemented 501 rules.
 - Checkout attempts inferred: dart thrown while score was
   double-finishable (even 2-40, or 50). Documented in
   `backend/app/matches/service.py`.
-- Stateless JWT (60 min); logout is client-side token discard —
+- Stateless JWT (480 min, raised from 60 on 2026-09-10); logout is
+  client-side token discard —
   server-side revocation deferred to V1 with refresh tokens (README
   "Authentication model").
 - Matches start immediately on creation (no pre-match state);
@@ -134,7 +136,11 @@ router state; LoginPage explains and returns there after sign-in.
 Token lifetime default raised 60 → 480 minutes (an evening of
 matches), in config.py, .env.example, render.yaml and the README.
 Also fixed: Halve It rows in the scoring page's Recent visits showed
-x01-style "0 (0 → 0)"; they now show "+N" or "HALVED".
+x01-style "0 (0 → 0)"; they now show "+N" or "HALVED". (Corrected
+2026-10-09: that fix judged a round from `points_scored`, which the
+server stores as 0 for every Halve It turn, so every round read
+HALVED. Rows are now judged from the running total before and after
+the round, which the page already had.)
 
 **2026-09-18 casual Cricket bots:** the bots played Cricket as a rigid
 march, highest open number every dart and the bull last, so every leg
@@ -267,7 +273,8 @@ the dashboard resume row.
 ## Phase 10 portfolio polish (2026-09-13)
 
 - **README rewritten as a landing page:** hero with tagline, CI and
-  license badges, live-demo link and demo credentials, a screenshot
+  license badges, live-demo link and demo credentials (superseded: the
+  shared demo account was dropped, see below), a screenshot
   grid, a Mermaid architecture diagram, a "what it does" list, then the
   carried-over rules, bot, auth, security, local-dev and deployment
   sections. Local-dev commands now given for macOS/Linux with Windows
@@ -303,4 +310,7 @@ the dashboard resume row.
 See the README "Local development" section — it is kept accurate and
 was verified on a fresh environment. Requirements: Python 3.12+,
 Node.js, Docker Desktop. Secrets live in an untracked `.env` created
-from `.env.example` (generate your own SECRET_KEY).
+from `.env.example`; generating your own SECRET_KEY is a required step,
+not optional: the copied placeholder is refused at startup, and the
+unit tests that import `app.main` fail at collection until it is set
+(README step 1 says so since 2026-10-09).

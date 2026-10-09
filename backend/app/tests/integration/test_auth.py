@@ -98,6 +98,17 @@ def test_bad_credentials_get_identical_401(client, email, password):
     assert response.json()["error"]["message"] == "Incorrect email or password."
 
 
+def test_login_rejects_passwords_longer_than_registration_allows(client):
+    """Register caps passwords at 128 characters; login must too, or an
+    arbitrarily large password gets fed to Argon2 on every attempt."""
+    client.post("/api/v1/auth/register", json=VALID_BODY)
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": VALID_BODY["email"], "password": "x" * 129},
+    )
+    assert response.status_code == 422
+
+
 def register_and_login(client) -> tuple[dict, dict]:
     """Helper: returns (created user body, auth headers)."""
     created = client.post("/api/v1/auth/register", json=VALID_BODY).json()
@@ -114,6 +125,26 @@ def test_me_returns_authenticated_user(client):
     assert response.status_code == 200
     assert response.json()["id"] == created["id"]
     assert response.json()["email"] == "pat@example.com"
+
+
+def test_me_carries_the_users_player_id_once_a_profile_exists(client):
+    """The dashboard finds its own stats through this field; scanning the
+    paginated player list stopped working past 50 players."""
+    _, headers = register_and_login(client)
+    assert client.get("/api/v1/me", headers=headers).json()["player_id"] is None
+
+    # A guest is not the user's profile and must not be reported as one.
+    client.post(
+        "/api/v1/players",
+        json={"display_name": "Guest Gary", "is_guest": True},
+        headers=headers,
+    )
+    assert client.get("/api/v1/me", headers=headers).json()["player_id"] is None
+
+    own = client.post(
+        "/api/v1/players", json={"display_name": "Patrick"}, headers=headers
+    ).json()
+    assert client.get("/api/v1/me", headers=headers).json()["player_id"] == own["id"]
 
 
 @pytest.mark.parametrize(

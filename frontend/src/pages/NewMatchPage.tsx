@@ -38,9 +38,10 @@ export function NewMatchPage() {
     queryFn: () => api<PlayerResponse[]>('/api/v1/players'),
   })
 
-  // Opponent choices: everyone except the signed-in user's own player.
-  const opponents =
-    playersQuery.data?.filter((p) => p.user_id !== user?.id) ?? []
+  // Opponent choices: guests only. A registered player's statistics are
+  // their own, so the server refuses them as opponents until an invite
+  // flow exists; bots are picked separately below.
+  const opponents = playersQuery.data?.filter((p) => p.user_id === null) ?? []
 
   const createMatch = useMutation({
     mutationFn: async () => {
@@ -111,7 +112,14 @@ export function NewMatchPage() {
                 <button
                   key={game.value}
                   type="button"
-                  onClick={() => setGameType(game.value)}
+                  onClick={() => {
+                    setGameType(game.value)
+                    // Halve It is a single game by default (docs/GAME_MODES.md);
+                    // the other modes default to best of 3. A length the player
+                    // chose on purpose is kept when switching between those.
+                    if (game.value === 'halve_it') setBestOf(1)
+                    else if (bestOf === 1 && gameType === 'halve_it') setBestOf(3)
+                  }}
                   className={`choice flex-1 ${gameType === game.value ? 'choice-on' : 'choice-off'}`}
                 >
                   {game.label}
@@ -175,7 +183,6 @@ export function NewMatchPage() {
                   {opponents.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.display_name}
-                      {p.user_id === null ? ' (guest)' : ''}
                     </option>
                   ))}
                 </select>

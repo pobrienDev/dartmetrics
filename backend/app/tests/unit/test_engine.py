@@ -4,9 +4,10 @@ Covers the Phase 0 acceptance test matrix (spec section 19, S01-S16)
 plus dart-representation validation and engine guard rails.
 
 S15 (reject a fourth dart in a turn) and the request-level half of S16
-(reject darts against a completed leg) are turn-service rules and will
-be tested when that service is built; the engine-level guard for a
-finished leg is covered here.
+(reject darts against a completed leg) are turn-service rules, tested
+through the API in integration/test_matches_api.py as
+test_four_darts_is_422 and test_scoring_completed_match_is_409; the
+engine-level guard for a finished leg is covered here.
 """
 
 import pytest

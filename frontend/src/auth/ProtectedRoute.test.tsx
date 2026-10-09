@@ -139,3 +139,50 @@ describe('ProtectedRoute when the session expires mid-page', () => {
     expect(await screen.findByText('login screen (from /)')).toBeInTheDocument()
   })
 })
+
+describe('ProtectedRoute startup check', () => {
+  const ME = {
+    id: '00000000-0000-0000-0000-000000000001',
+    email: 'pat@example.com',
+    display_name: 'Patrick',
+    is_active: true,
+    created_at: '2026-08-26T00:00:00Z',
+    player_id: null,
+  }
+
+  it('keeps the token and offers a retry when /me fails for a reason other than 401', async () => {
+    localStorage.setItem('dartmetrics_token', 'stored-token')
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('Failed to fetch')) // network blip / container waking
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve(ME) })
+    vi.stubGlobal('fetch', fetchMock)
+    renderAt('/')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/could not reach the server/i)
+    expect(localStorage.getItem('dartmetrics_token')).toBe('stored-token')
+    expect(screen.queryByText(/login screen/)).not.toBeInTheDocument()
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Try again' }).click()
+    })
+    expect(await screen.findByText('secret dashboard')).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('drops the token and goes to login when /me answers 401', async () => {
+    localStorage.setItem('dartmetrics_token', 'stale-token')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        json: () => Promise.resolve({ error: { code: 'NOT_AUTHENTICATED', message: 'Invalid or expired token.' } }),
+      }),
+    )
+    renderAt('/')
+
+    expect(await screen.findByText(/login screen/)).toBeInTheDocument()
+    expect(localStorage.getItem('dartmetrics_token')).toBeNull()
+  })
+})

@@ -1,8 +1,8 @@
 """Domain error types (dev plan section 17.1).
 
-Each error carries a stable machine-readable code. The API layer will
-map these to HTTP responses later; services raise them without knowing
-anything about HTTP.
+Each error carries a stable machine-readable code and an HTTP status;
+the DomainError handler in app.main turns them into the error envelope.
+Services raise them without knowing anything about HTTP.
 """
 
 

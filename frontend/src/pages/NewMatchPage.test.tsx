@@ -22,14 +22,14 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 /** A fetch stub that routes by URL and records match creations. */
-function stubApi() {
+function stubApi(players: unknown[] = []) {
   const created: unknown[] = []
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string, init?: RequestInit) => {
       const method = init?.method ?? 'GET'
       if (url === '/api/v1/players/bots') return Promise.resolve(jsonResponse(BOTS))
-      if (url === '/api/v1/players' && method === 'GET') return Promise.resolve(jsonResponse([]))
+      if (url === '/api/v1/players' && method === 'GET') return Promise.resolve(jsonResponse(players))
       if (url === '/api/v1/players' && method === 'POST') {
         return Promise.resolve(
           jsonResponse({ error: { code: 'PLAYER_PROFILE_EXISTS', message: 'exists' } }, 409),
@@ -98,5 +98,45 @@ describe('NewMatchPage bot opponents', () => {
       game_type: 'x01',
       starting_player_id: null,
     })
+  })
+})
+
+describe('NewMatchPage human opponents', () => {
+  it('offers guests but never another registered player', async () => {
+    const guest = {
+      id: 'guest-1',
+      user_id: null,
+      display_name: 'Guest Gary',
+      nickname: null,
+      is_active: true,
+      bot_difficulty: null,
+      created_at: '2026-09-08T00:00:00Z',
+    }
+    const registered = { ...guest, id: 'player-2', user_id: 'user-2', display_name: 'Rival' }
+    stubApi([guest, registered])
+    renderPage()
+
+    expect(await screen.findByRole('option', { name: 'Guest Gary' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: /rival/i })).not.toBeInTheDocument()
+  })
+})
+
+describe('NewMatchPage match length', () => {
+  it('defaults Halve It to a single game and the other modes to best of 3', async () => {
+    const created = stubApi()
+    renderPage()
+    const user = userEvent.setup()
+
+    expect(screen.getByRole('button', { name: 'Best of 3' }).className).toContain('choice-on')
+    await user.click(screen.getByRole('button', { name: /halve it/i }))
+    expect(screen.getByRole('button', { name: 'Best of 1' }).className).toContain('choice-on')
+    await user.click(screen.getByRole('button', { name: /^501/i }))
+    expect(screen.getByRole('button', { name: 'Best of 3' }).className).toContain('choice-on')
+
+    await user.click(screen.getByRole('button', { name: /halve it/i }))
+    await user.click(screen.getByRole('button', { name: /^bot$/i }))
+    await user.click(screen.getByRole('button', { name: /start match/i }))
+    await waitFor(() => expect(created).toHaveLength(1))
+    expect(created[0]).toMatchObject({ game_type: 'halve_it', best_of_legs: 1 })
   })
 })

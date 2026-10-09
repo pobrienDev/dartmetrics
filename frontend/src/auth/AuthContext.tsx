@@ -6,30 +6,57 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 
-import { api, clearToken, getToken, SESSION_EXPIRED_EVENT, setToken } from '../api/client'
+import { api, ApiError, clearToken, getToken, SESSION_EXPIRED_EVENT, setToken } from '../api/client'
 import type { TokenResponse, UserResponse } from '../api/types'
 import { AuthContext } from './useAuth'
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+export function AuthProvider({
+  children,
+  onSignOut,
+}: {
+  children: ReactNode
+  // Runs whenever the session ends (logout or expiry): the app uses it
+  // to clear the query cache so the next person to sign in on this
+  // tab never sees the previous user's matches or stats.
+  onSignOut?: () => void
+}) {
   const [user, setUser] = useState<UserResponse | null>(null)
   const [loading, setLoading] = useState<boolean>(() => getToken() !== null)
+  const [startupError, setStartupError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     if (!getToken()) return
+    setLoading(true)
+    setStartupError(null)
     api<UserResponse>('/api/v1/me')
       .then(setUser)
-      .catch(() => clearToken()) // expired/invalid token: start signed out
+      .catch((err) => {
+        // Only a 401 means the token is bad (the client has already
+        // dropped it). A network failure or a 5xx while the free-tier
+        // container wakes up is no reason to sign the user out.
+        if (err instanceof ApiError && err.status === 401) {
+          clearToken()
+          return
+        }
+        setStartupError('Could not reach the server to restore your session.')
+      })
       .finally(() => setLoading(false))
-  }, [])
+  }, [attempt])
+
+  const retry = useCallback(() => setAttempt((n) => n + 1), [])
 
   // A 401 anywhere in the app (typically an expired token mid-match)
   // signs the user out; ProtectedRoute then redirects to login with the
   // current page remembered.
   useEffect(() => {
-    const signOut = () => setUser(null)
+    const signOut = () => {
+      setUser(null)
+      onSignOut?.()
+    }
     window.addEventListener(SESSION_EXPIRED_EVENT, signOut)
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, signOut)
-  }, [])
+  }, [onSignOut])
 
   const login = useCallback(async (email: string, password: string) => {
     const token = await api<TokenResponse>('/api/v1/auth/login', {
@@ -55,10 +82,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Stateless JWT: logout is discarding the token (see README).
     clearToken()
     setUser(null)
-  }, [])
+    onSignOut?.()
+  }, [onSignOut])
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, startupError, retry, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   )
