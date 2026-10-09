@@ -21,7 +21,8 @@ Two layers:
 
 Difficulties are ordered noob < easy < medium < hard < pro. Their
 accuracies were tuned so a bot aiming at T20 averages roughly 24, 40,
-63, 81, and 100 per three darts respectively. The noob is a genuine
+61, 80, and 100 per three darts respectively (100,000-dart simulation,
+2026-10-09: 23.5 / 40.0 / 60.8 / 79.6 / 100.4). The noob is a genuine
 beginner: it hits the segment it aims at about a quarter of the time,
 misses the board one dart in five, and rarely finds a double; easy is
 an occasional pub player. The plain-single rates are not pinned by
