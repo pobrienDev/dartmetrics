@@ -136,9 +136,13 @@ DartMetrics implements standard steel-tip **501, straight-in, double-out**:
   winner is the first to `floor(N/2) + 1` legs.
 
 The full rule interpretation, entity model, and acceptance cases live in
-the Phase 0 specification; the scoring engine's unit tests mirror its
-acceptance matrix one-to-one (`app/tests/unit/test_engine.py`, cases
-S01–S16).
+the Phase 0 specification, a design document kept outside the repository.
+Its acceptance matrix (cases S01–S16) is covered across the engine and
+API tests: S01–S14 and the engine-level half of S16 in
+`app/tests/unit/test_engine.py`, S15 (no fourth dart) by
+`test_four_darts_is_422` and the request-level half of S16 (no darts
+against a completed match) by `test_scoring_completed_match_is_409`,
+both in `app/tests/integration/test_matches_api.py`.
 
 ## Bot opponents
 
