@@ -9,6 +9,11 @@ import type { UserResponse } from '../api/types'
 export interface AuthState {
   user: UserResponse | null
   loading: boolean
+  // Set when the stored token could not be checked for a reason other
+  // than being rejected (network failure, server waking up). The token
+  // is kept; retry() asks again.
+  startupError: string | null
+  retry: () => void
   login: (email: string, password: string) => Promise<void>
   register: (email: string, password: string, displayName: string) => Promise<void>
   logout: () => void
