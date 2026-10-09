@@ -99,6 +99,24 @@ def test_update_own_player(client, headers):
     assert response.json()["display_name"] == "Patrick"  # untouched
 
 
+def test_null_display_name_is_a_validation_error_not_a_conflict(client, headers):
+    created = client.post(
+        "/api/v1/players", json={"display_name": "Patrick"}, headers=headers
+    ).json()
+    response = client.patch(
+        f"/api/v1/players/{created['id']}", json={"display_name": None}, headers=headers
+    )
+    assert response.status_code == 422
+
+    # The nullable nickname may still be cleared explicitly.
+    response = client.patch(
+        f"/api/v1/players/{created['id']}", json={"nickname": None}, headers=headers
+    )
+    assert response.status_code == 200
+    assert response.json()["nickname"] is None
+    assert response.json()["display_name"] == "Patrick"
+
+
 def test_cannot_update_someone_elses_player(client, headers):
     created = client.post(
         "/api/v1/players", json={"display_name": "Patrick"}, headers=headers
