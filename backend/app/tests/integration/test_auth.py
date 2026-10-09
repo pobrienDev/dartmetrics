@@ -98,6 +98,17 @@ def test_bad_credentials_get_identical_401(client, email, password):
     assert response.json()["error"]["message"] == "Incorrect email or password."
 
 
+def test_login_rejects_passwords_longer_than_registration_allows(client):
+    """Register caps passwords at 128 characters; login must too, or an
+    arbitrarily large password gets fed to Argon2 on every attempt."""
+    client.post("/api/v1/auth/register", json=VALID_BODY)
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": VALID_BODY["email"], "password": "x" * 129},
+    )
+    assert response.status_code == 422
+
+
 def register_and_login(client) -> tuple[dict, dict]:
     """Helper: returns (created user body, auth headers)."""
     created = client.post("/api/v1/auth/register", json=VALID_BODY).json()

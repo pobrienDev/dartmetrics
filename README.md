@@ -195,9 +195,16 @@ re-enter.
   requests per minute per client IP for login and register, tunable via
   `AUTH_RATE_LIMIT`). Argon2 verification is deliberately slow, so without
   a limit those two routes are both a brute-force and a CPU-exhaustion
-  target. Over the limit returns `429 RATE_LIMITED` with `Retry-After`.
+  target; both also cap passwords at 128 characters for the same reason.
+  Over the limit returns `429 RATE_LIMITED` with `Retry-After`.
   Counters live in process memory, which suits a single API instance;
   a shared store would be needed to scale out.
+- **Login hides which emails exist** (one message, and a dummy hash is
+  verified when the account is unknown, so timing matches), but
+  **register says when an email is taken** (`409 EMAIL_ALREADY_REGISTERED`).
+  That is a deliberate usability trade-off: a generic answer would leave
+  someone who already has an account guessing why sign-up fails, and the
+  rate limit bounds how fast the endpoint can be probed.
 - **The placeholder `SECRET_KEY` is refused at startup**, as is any key
   under 32 characters, so a copied `.env.example` cannot go to production
   with forgeable tokens.

@@ -20,7 +20,9 @@ class RegisterRequest(BaseModel):
 
 class LoginRequest(BaseModel):
     email: EmailStr
-    password: str
+    # Same cap as registration: Argon2 is deliberately slow, so an
+    # unbounded password would make login a CPU-exhaustion target.
+    password: str = Field(max_length=128)
 
 
 class TokenResponse(BaseModel):
