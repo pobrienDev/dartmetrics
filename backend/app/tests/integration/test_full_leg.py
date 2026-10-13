@@ -39,11 +39,9 @@ def test_full_leg_from_501_to_checkout(db_session, match_setup):
 
     # Per-player state
     assert ms.state1.remaining_score == 0
-    assert ms.state1.has_won is True
     assert ms.state1.darts_thrown == 9
     assert ms.state1.turns_taken == 3
     assert ms.state2.remaining_score == 501 - 60 - 57
-    assert ms.state2.has_won is False
     assert ms.state2.darts_thrown == 6
 
     # Raw event history: 5 turns, 15 darts, sequential turn numbers

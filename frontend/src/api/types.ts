@@ -33,7 +33,7 @@ export interface ApiErrorBody {
 
 // --- Matches ---------------------------------------------------------------
 
-export type MatchStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancelled'
+export type MatchStatus = 'in_progress' | 'completed' | 'cancelled'
 export type GameType = 'x01' | 'cricket' | 'halve_it'
 
 export interface PlayerState {

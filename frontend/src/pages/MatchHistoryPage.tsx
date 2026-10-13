@@ -21,7 +21,6 @@ const FILTERS: { label: string; value: MatchStatus | null }[] = [
 ]
 
 const STATUS_BADGE: Record<MatchStatus, string> = {
-  scheduled: 'bg-ink-700 text-ink-300',
   in_progress: 'bg-gold-500/15 text-gold-300',
   completed: 'bg-felt-900/70 text-felt-300',
   cancelled: 'bg-ink-700 text-ink-400',

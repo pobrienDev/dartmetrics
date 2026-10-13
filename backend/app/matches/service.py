@@ -879,7 +879,6 @@ def record_turn(
 
     if outcome.leg_won:
         # In Halve It the leg's winner is not necessarily the thrower.
-        states[leg_winner_id].has_won = True
         leg.status = LegStatus.COMPLETED
         leg.winner_player_id = leg_winner_id
         leg.completed_at = now
