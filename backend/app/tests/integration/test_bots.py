@@ -1,13 +1,10 @@
 """Integration tests for bot opponents."""
 
 import random
-import uuid
 
 import pytest
 from sqlalchemy import select
 
-from app.matches import service
-from app.matches.models import Match
 from app.players.models import Player
 
 
@@ -49,9 +46,8 @@ def test_bots_listed_easiest_to_hardest_and_idempotent(client, setup):
 def test_listing_bots_writes_nothing(client, setup, db_session):
     """GET is a safe method: the bots come from the migration, not from
     a select-then-insert on first use."""
-    from sqlalchemy import func, select
+    from sqlalchemy import func
 
-    from app.players.models import Player
 
     before = db_session.scalar(select(func.count(Player.id)))
     assert len(client.get("/api/v1/players/bots", headers=setup["headers"]).json()) == 5
@@ -60,26 +56,22 @@ def test_listing_bots_writes_nothing(client, setup, db_session):
 
 def test_database_refuses_a_second_bot_per_difficulty_and_a_second_profile(db_session):
     import pytest
-    from sqlalchemy import select
     from sqlalchemy.exc import IntegrityError
 
     from app.auth.models import User
-    from app.players.models import Player
 
-    with pytest.raises(IntegrityError):
-        with db_session.begin_nested():
-            db_session.add(Player(display_name="Another Pro", bot_difficulty="pro"))
-            db_session.flush()
+    with pytest.raises(IntegrityError), db_session.begin_nested():
+        db_session.add(Player(display_name="Another Pro", bot_difficulty="pro"))
+        db_session.flush()
 
     user = User(email="dup@example.com", password_hash="x", display_name="Dup")
     db_session.add(user)
     db_session.flush()
     db_session.add(Player(display_name="One", user_id=user.id))
     db_session.flush()
-    with pytest.raises(IntegrityError):
-        with db_session.begin_nested():
-            db_session.add(Player(display_name="Two", user_id=user.id))
-            db_session.flush()
+    with pytest.raises(IntegrityError), db_session.begin_nested():
+        db_session.add(Player(display_name="Two", user_id=user.id))
+        db_session.flush()
 
 
 def test_bots_are_not_in_the_human_player_list(client, setup):

@@ -110,7 +110,7 @@ class Later:
                 try:
                     self.result = action(session)
                     session.commit()
-                except Exception as exc:  # noqa: BLE001 - reported to the test
+                except Exception as exc:
                     self.error = exc
                     session.rollback()
 

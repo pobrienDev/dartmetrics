@@ -27,10 +27,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
 
-# Defined with the bot engine so the scoring package stays framework-free;
-# re-exported here because the Player model and its callers use it.
-from app.scoring.bot import BotDifficulty
-
 
 class Player(Base):
     __tablename__ = "players"

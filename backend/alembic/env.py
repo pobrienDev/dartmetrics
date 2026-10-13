@@ -4,8 +4,7 @@ from logging.config import fileConfig
 from pathlib import Path
 
 from dotenv import load_dotenv
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
+from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 
@@ -15,13 +14,13 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BACKEND_DIR))
 load_dotenv(BACKEND_DIR.parent / ".env")
 
-from app.config import normalize_database_url  # noqa: E402
-from app.db import Base  # noqa: E402
 # Import every model module so its tables register on Base.metadata;
 # autogenerate only sees tables that have been imported.
-import app.auth.models  # noqa: E402,F401
+import app.auth.models  # noqa: E402
+import app.matches.models  # noqa: E402
 import app.players.models  # noqa: E402,F401
-import app.matches.models  # noqa: E402,F401
+from app.config import normalize_database_url  # noqa: E402
+from app.db import Base  # noqa: E402
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

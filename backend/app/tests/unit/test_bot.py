@@ -6,9 +6,9 @@ import pytest
 
 from app.scoring import bot as bot_module
 from app.scoring.bot import (
-    BotDifficulty,
     ACCURACY,
     Aim,
+    BotDifficulty,
     choose_cricket_aim,
     choose_halve_it_aim,
     choose_x01_aim,
@@ -134,7 +134,7 @@ def test_x01_visit_is_always_a_legal_turn(difficulty):
     service would, checking the bot never throws past a bust or
     checkout and always throws three darts otherwise."""
     rng = random.Random(11)
-    for start in list(range(2, 200)) + [301, 501]:
+    for start in [*range(2, 200), 301, 501]:
         darts = x01_visit(start, ACCURACY[difficulty], rng)
         assert 1 <= len(darts) <= 3
         remaining = start
@@ -242,7 +242,7 @@ def test_cricket_visit_moves_on_after_closing_a_number(monkeypatch):
 
 
 def test_cricket_visit_stops_after_closing_the_board():
-    marks = {t: 3 for t in initial_marks()}
+    marks = dict.fromkeys(initial_marks(), 3)
     marks[BULL_SEGMENT] = 2
     rng = random.Random(5)
     for _ in range(200):

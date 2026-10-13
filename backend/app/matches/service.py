@@ -16,7 +16,8 @@ UI can capture the player's actual target.
 
 import random
 import uuid
-from datetime import datetime, timezone
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
@@ -36,8 +37,6 @@ from app.common.errors import (
     PlayerNotInMatch,
     UndoNotAvailable,
 )
-from dataclasses import dataclass, field
-
 from app.matches.models import (
     DartThrow,
     GameType,
@@ -48,16 +47,19 @@ from app.matches.models import (
     MatchStatus,
     Turn,
 )
-from app.players.models import BotDifficulty, Player
+from app.players.models import Player
 from app.scoring import bot
+from app.scoring.bot import BotDifficulty
 from app.scoring.cricket import apply_cricket_dart, initial_marks
 from app.scoring.domain import DartInput, Multiplier
 from app.scoring.engine import apply_dart
 from app.scoring.halve_it import (
     DARTS_PER_ROUND,
-    STARTING_SCORE as HALVE_IT_STARTING_SCORE,
     apply_halve_it_visit,
     round_for_number,
+)
+from app.scoring.halve_it import (
+    STARTING_SCORE as HALVE_IT_STARTING_SCORE,
 )
 
 MAX_DARTS_PER_TURN = 3
@@ -106,7 +108,7 @@ def create_match(
     if starter_id not in (own_player.id, opponent.id):
         raise InvalidMatchSetup("starting_player_id must be one of the participants.")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     match = Match(
         created_by_user_id=user.id,
         player1_id=own_player.id,
@@ -202,12 +204,11 @@ def list_matches(
     )
     # ... and one for the page's players, instead of two per row.
     player_ids = {pid for m in matches for pid in (m.player1_id, m.player2_id)}
-    names = {
-        pid: name
-        for pid, name in session.execute(
+    names = dict(
+        session.execute(
             select(Player.id, Player.display_name).where(Player.id.in_(player_ids))
-        )
-    } if player_ids else {}
+        ).all()
+    ) if player_ids else {}
 
     items = []
     for match in matches:
@@ -353,7 +354,7 @@ def record_match_visit(
             match,
             leg_number=leg.leg_number + 1,
             starting_player_id=other_starter,
-            now=datetime.now(timezone.utc),
+            now=datetime.now(UTC),
         )
         # The legs collection was loaded before the new leg existed
         session.expire(match, ["legs"])
@@ -426,7 +427,7 @@ def abandon_match(session: Session, user: User, match_id: uuid.UUID) -> Match:
         raise MatchNotActive(f"Match is {match.status}; only an in-progress match can be abandoned.")
 
     match.status = MatchStatus.CANCELLED
-    match.completed_at = datetime.now(timezone.utc)
+    match.completed_at = datetime.now(UTC)
     session.flush()
     return match
 
@@ -680,7 +681,7 @@ def _play_x01_visit(turn_start: int, darts: list[DartInput]) -> _VisitOutcome:
 
     dart_rows = []
     score_before = turn_start
-    for dart, result in zip(darts, results):
+    for dart, result in zip(darts, results, strict=True):
         dart_rows.append(
             {
                 "segment": "MISS" if dart.segment is None else str(dart.segment),
@@ -856,7 +857,7 @@ def record_turn(
         outcome = _play_x01_visit(state.remaining_score, darts)
         leg_winner_id = player_id if outcome.leg_won else None
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     turn = Turn(
         leg_id=leg.id,
         player_id=player_id,

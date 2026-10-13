@@ -74,7 +74,7 @@ def test_inner_bull_from_two_marks_closes_with_overflow_discarded():
 
 
 def all_closed_except(target: int, marks_on_target: int) -> dict[int, int]:
-    marks = {t: 3 for t in CRICKET_TARGETS}
+    marks = dict.fromkeys(CRICKET_TARGETS, 3)
     marks[target] = marks_on_target
     return marks
 

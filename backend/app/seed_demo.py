@@ -21,7 +21,7 @@ import argparse
 import random
 import sys
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -40,9 +40,10 @@ from app.matches.models import (
     MatchStatus,
     Turn,
 )
-from app.players.models import BotDifficulty, Player
+from app.players.models import Player
 from app.players.service import create_player, list_bots
 from app.scoring import bot
+from app.scoring.bot import BotDifficulty
 from app.scoring.domain import DartInput
 
 DEMO_EMAIL = "demo@dartmetrics.app"
@@ -105,7 +106,7 @@ def _play_out(
         if active["bot_difficulty"]:
             _, match, _ = matches.record_bot_visit(session, user, match.id, rng)
         else:
-            leg = next(l for l in match.legs if l.status is LegStatus.IN_PROGRESS)
+            leg = next(leg for leg in match.legs if leg.status is LegStatus.IN_PROGRESS)
             lps = session.scalar(
                 select(LegPlayerState).where(
                     LegPlayerState.leg_id == leg.id,
@@ -120,7 +121,7 @@ def _play_out(
 
 def _backdate(session: Session, match: Match, days_ago: float) -> None:
     """Shift the whole match into the past so history reads naturally."""
-    start = datetime.now(timezone.utc) - timedelta(days=days_ago)
+    start = datetime.now(UTC) - timedelta(days=days_ago)
     offset = start - match.created_at
     match.created_at = start
     match.started_at = start
@@ -206,7 +207,7 @@ def seed(session: Session, reset: bool, seed_value: int) -> None:
     matches.record_match_visit(session, user, live.id, me.id, [t20, t20, t20])
     _, live, _ = matches.record_bot_visit(session, user, live.id, rng)
     _backdate(session, live, 0.01)
-    print(f"  x01      best of 3 vs Medium Bot  -> in progress (Sam to throw)")
+    print("  x01      best of 3 vs Medium Bot  -> in progress (Sam to throw)")
 
 
 def main(argv: list[str] | None = None) -> int:

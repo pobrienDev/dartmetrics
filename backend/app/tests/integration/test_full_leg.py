@@ -6,11 +6,10 @@ item 10).
 import pytest
 from sqlalchemy import select
 
-from app.common.errors import DomainError, NotPlayersTurn
+from app.common.errors import NotPlayersTurn
 from app.matches.models import DartThrow, LegStatus, MatchStatus, Turn
 from app.matches.service import record_turn
 from app.scoring.domain import double, single, triple
-from app.scoring.engine import apply_dart
 
 
 def test_full_leg_from_501_to_checkout(db_session, match_setup):

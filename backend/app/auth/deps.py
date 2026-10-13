@@ -33,7 +33,7 @@ def get_current_user(
         user_id = decode_access_token(credentials.credentials)
     except jwt.InvalidTokenError:
         # Covers expired, tampered, malformed — no detail leaks out.
-        raise NotAuthenticated("Invalid or expired token.")
+        raise NotAuthenticated("Invalid or expired token.") from None
 
     user = db.get(User, user_id)
     if user is None or not user.is_active:

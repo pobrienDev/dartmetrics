@@ -1,7 +1,7 @@
 """Unit tests for JWT access tokens."""
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import jwt
 import pytest
@@ -21,7 +21,7 @@ def test_token_round_trip_returns_user_id():
 
 
 def test_expired_token_is_rejected():
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expired = jwt.encode(
         {"sub": str(uuid.uuid4()), "iat": now - timedelta(hours=2), "exp": now - timedelta(hours=1)},
         get_settings().secret_key,
@@ -33,7 +33,7 @@ def test_expired_token_is_rejected():
 
 def test_token_signed_with_wrong_key_is_rejected():
     forged = jwt.encode(
-        {"sub": str(uuid.uuid4()), "exp": datetime.now(timezone.utc) + timedelta(hours=1)},
+        {"sub": str(uuid.uuid4()), "exp": datetime.now(UTC) + timedelta(hours=1)},
         "attacker-key-padded-to-a-realistic-32-byte-length",
         algorithm=JWT_ALGORITHM,
     )

@@ -7,7 +7,7 @@ detected later via pwdlib's rehash support.
 """
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import jwt
 from pwdlib import PasswordHash
@@ -30,7 +30,7 @@ def verify_password(plain_password: str, password_hash: str) -> bool:
 def create_access_token(user_id: uuid.UUID) -> str:
     """Signed JWT identifying a user, valid for the configured lifetime."""
     settings = get_settings()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload = {
         "sub": str(user_id),
         "iat": now,

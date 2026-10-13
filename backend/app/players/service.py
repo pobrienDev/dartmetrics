@@ -12,8 +12,9 @@ from sqlalchemy.orm import Session
 
 from app.auth.models import User
 from app.common.errors import Forbidden, PlayerNotFound, PlayerProfileExists
-from app.players.models import BotDifficulty, Player
+from app.players.models import Player
 from app.players.schemas import PlayerUpdateRequest
+from app.scoring.bot import BotDifficulty
 
 
 def create_player(

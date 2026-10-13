@@ -20,7 +20,7 @@ MARKS_TO_CLOSE = 3
 
 
 def initial_marks() -> dict[int, int]:
-    return {target: 0 for target in CRICKET_TARGETS}
+    return dict.fromkeys(CRICKET_TARGETS, 0)
 
 
 def is_board_closed(marks: dict[int, int]) -> bool:

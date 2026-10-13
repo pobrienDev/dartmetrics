@@ -10,7 +10,6 @@ from sqlalchemy import select
 
 from app.auth.models import User
 
-
 VALID_BODY = {
     "email": "pat@example.com",
     "password": "correct horse battery staple",
@@ -173,7 +172,7 @@ def test_me_rejects_token_for_nonexistent_user(client):
 
 
 def test_me_rejects_deactivated_user_with_valid_token(client, db_session):
-    created, headers = register_and_login(client)
+    _, headers = register_and_login(client)
     user = db_session.scalar(select(User).where(User.email == "pat@example.com"))
     user.is_active = False
     db_session.flush()

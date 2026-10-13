@@ -17,14 +17,14 @@ from sqlalchemy.orm import Session
 
 from app.auth.router import me_router
 from app.auth.router import router as auth_router
-from app.matches.router import router as matches_router
-from app.players.router import router as players_router
-from app.statistics.router import router as statistics_router
 from app.common.errors import DomainError
 from app.common.headers import SecurityHeadersMiddleware
 from app.common.ratelimit import limiter
 from app.config import get_settings
 from app.db import get_db
+from app.matches.router import router as matches_router
+from app.players.router import router as players_router
+from app.statistics.router import router as statistics_router
 
 
 def create_app() -> FastAPI:
