@@ -25,25 +25,14 @@ import type {
   DartMultiplier,
   DartRequest,
   MatchState,
-  PlayerState,
-  TurnSummary,
   VisitResponse,
 } from '../api/types'
+import { RecentVisits, type RecentVisit } from '../components/RecentVisits'
 import { checkoutFor } from '../utils/checkouts'
 import { boardClosed, CRICKET_TARGETS, marksAfterDarts, markSymbol } from '../utils/cricket'
 import { dartLabel, dartScore, visitMustEnd } from '../utils/darts'
 import { GAME_CHIP, GAME_LABELS } from '../utils/games'
-
-interface RecentVisit {
-  turn: TurnSummary
-  labels: string
-  // Halve It only: the player's running total before and after the
-  // round. The server stores every Halve It turn with points_scored 0
-  // (the total lives in the leg state), so the row is rendered from
-  // these instead.
-  scoreBefore?: number | null
-  scoreAfter?: number | null
-}
+import { shortName } from '../utils/players'
 
 type Moment = 'bust' | 'oneEighty' | 'ton' | 'checkout' | null
 
@@ -67,11 +56,6 @@ const ROUND_LABELS: Record<string, string> = {
 
 function defaultBand(roundTarget: string | null | undefined): 'inner' | 'outer' {
   return roundTarget?.startsWith('inner') ? 'inner' : 'outer'
-}
-
-/** Bot players are called "Medium Bot" etc.; the badge already says bot. */
-function shortName(player: PlayerState): string {
-  return player.bot_difficulty ? player.display_name.replace(/\s+bot$/i, '') : player.display_name
 }
 
 const BOT_THROW_DELAY_MS = 1200
@@ -178,7 +162,7 @@ export function LiveScoringPage() {
     } else if (turn.points_scored === 180) {
       celebrate('oneEighty', turn.player_id)
       show(isYou ? 'ONE HUNDRED AND EIGHTY!' : `${who}: ONE HUNDRED AND EIGHTY!`, 'oneEighty')
-    } else if (!isCricketGame(response.state) && turn.points_scored >= 100) {
+    } else if (response.state.game_type !== 'cricket' && turn.points_scored >= 100) {
       celebrate('ton', turn.player_id)
       show(`${threw} ${labels} for ${turn.points_scored}!`, 'ton')
     } else if (!isYou) {
@@ -532,7 +516,7 @@ export function LiveScoringPage() {
             </button>
           </div>
           {recentTurns.length > 0 && (
-            <RecentVisits turns={recentTurns} state={state} isCricket={isCricket} />
+            <RecentVisits turns={recentTurns} state={state} />
           )}
         </div>
       ) : (
@@ -638,85 +622,10 @@ export function LiveScoringPage() {
           </div>
 
           {recentTurns.length > 0 && (
-            <RecentVisits turns={recentTurns} state={state} isCricket={isCricket} />
+            <RecentVisits turns={recentTurns} state={state} />
           )}
         </div>
       )}
-    </div>
-  )
-}
-
-function isCricketGame(state: MatchState): boolean {
-  return state.game_type === 'cricket'
-}
-
-function RecentVisits({
-  turns,
-  state,
-  isCricket,
-}: {
-  turns: RecentVisit[]
-  state: MatchState
-  isCricket: boolean
-}) {
-  const isHalveIt = state.game_type === 'halve_it'
-  return (
-    <div className="mt-6">
-      <p className="label">Recent visits</p>
-      <ul className="space-y-1 text-sm">
-        {turns.map(({ turn, labels, scoreBefore, scoreAfter }) => {
-          const who = state.players.find((p) => p.player_id === turn.player_id)
-          // Halve It: a round either adds its qualifying points or halves.
-          // Judged from the running total, not points_scored (always 0).
-          const delta =
-            isHalveIt && scoreBefore != null && scoreAfter != null ? scoreAfter - scoreBefore : null
-          const halved = delta != null && delta < 0
-          const tone = turn.is_bust || halved
-            ? 'text-bust-400'
-            : turn.is_checkout
-              ? 'text-felt-300'
-              : turn.points_scored >= 100 && !isCricket
-                ? 'text-gold-300'
-                : 'text-ink-200'
-          return (
-            <li key={turn.id} className="flex justify-between rounded-lg bg-ink-800 px-3 py-2">
-              <span className="text-ink-300">{who ? shortName(who) : ''}</span>
-              <span className={`font-mono ${tone}`}>
-                {isCricket ? (
-                  <>
-                    {labels}
-                    {turn.is_checkout && ' ◎ closed'}
-                  </>
-                ) : isHalveIt ? (
-                  <>
-                    {labels}
-                    {'  '}
-                    {halved ? 'HALVED' : delta != null ? `+${delta}` : ''}
-                    {scoreBefore != null && scoreAfter != null && (
-                      <>
-                        {'  '}
-                        <span className="text-ink-500">({scoreBefore} → {scoreAfter})</span>
-                      </>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    {labels}
-                    {'  '}
-                    {turn.is_bust
-                      ? 'BUST'
-                      : turn.is_checkout
-                        ? `${turn.points_scored} ✓ out`
-                        : turn.points_scored}
-                    {'  '}
-                    <span className="text-ink-500">({turn.turn_start_score} → {turn.turn_end_score})</span>
-                  </>
-                )}
-              </span>
-            </li>
-          )
-        })}
-      </ul>
     </div>
   )
 }
