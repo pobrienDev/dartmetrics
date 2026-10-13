@@ -50,15 +50,6 @@ def create_player(
     return player
 
 
-BOT_DISPLAY_NAMES: dict[BotDifficulty, str] = {
-    BotDifficulty.NOOB: "Noob Bot",
-    BotDifficulty.EASY: "Easy Bot",
-    BotDifficulty.MEDIUM: "Medium Bot",
-    BotDifficulty.HARD: "Hard Bot",
-    BotDifficulty.PRO: "Pro Bot",
-}
-
-
 def list_bots(session: Session) -> list[Player]:
     """The five shared bot opponents, easiest first. The rows are created
     by the migration that added the one-bot-per-difficulty index, so

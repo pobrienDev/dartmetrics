@@ -52,7 +52,7 @@ from app.scoring import bot
 from app.scoring.bot import BotDifficulty
 from app.scoring.cricket import apply_cricket_dart, initial_marks
 from app.scoring.domain import DartInput, Multiplier
-from app.scoring.engine import apply_dart
+from app.scoring.engine import apply_dart, is_double_finishable
 from app.scoring.halve_it import (
     DARTS_PER_ROUND,
     apply_halve_it_visit,
@@ -63,7 +63,6 @@ from app.scoring.halve_it import (
 )
 
 MAX_DARTS_PER_TURN = 3
-STARTING_SCORE = 501
 
 
 def create_match(
@@ -398,15 +397,16 @@ def record_bot_visit(
     if not active.is_bot:
         raise NotBotsTurn("It is a human player's turn, not the bot's.")
 
-    darts = generate_bot_darts(match, states[active_id], active, rng or random.Random())
+    accuracy = bot.ACCURACY[BotDifficulty(active.bot_difficulty)]
+    darts = simulate_visit(match, states[active_id], accuracy, rng or random.Random())
     turn, match = record_match_visit(session, user, match_id, active_id, darts)
     return turn, match, darts
 
 
-def generate_bot_darts(
-    match: Match, state: LegPlayerState, player: Player, rng: random.Random
+def simulate_visit(
+    match: Match, state: LegPlayerState, accuracy: bot.Accuracy, rng: random.Random
 ) -> list[DartInput]:
-    accuracy = bot.ACCURACY[BotDifficulty(player.bot_difficulty)]
+    """Throw one visit with the bot engine for the match's game mode."""
     if match.game_type is GameType.CRICKET:
         return bot.cricket_visit(marks_from_game_state(state.game_state), accuracy, rng)
     if match.game_type is GameType.HALVE_IT:
@@ -642,10 +642,6 @@ def build_match_state(session: Session, match: Match) -> dict:
     }
 
 
-def _is_double_finishable(score: int) -> bool:
-    return score == 50 or (2 <= score <= 40 and score % 2 == 0)
-
-
 @dataclass
 class _VisitOutcome:
     """Uniform result of applying a visit's darts under any game mode."""
@@ -688,7 +684,7 @@ def _play_x01_visit(turn_start: int, darts: list[DartInput]) -> _VisitOutcome:
                 "multiplier": dart.multiplier.value,
                 "score": result.dart_score,
                 "is_double": dart.is_double,
-                "is_checkout_attempt": _is_double_finishable(score_before),
+                "is_checkout_attempt": is_double_finishable(score_before),
                 "is_winning_dart": result.is_checkout,
             }
         )

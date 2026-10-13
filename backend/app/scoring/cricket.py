@@ -30,10 +30,7 @@ def is_board_closed(marks: dict[int, int]) -> bool:
 @dataclass(frozen=True)
 class CricketDartResult:
     marks: dict[int, int]  # state after the dart (input is not mutated)
-    target_hit: int | None  # which target the dart affected, if any
-    marks_added: int  # effective marks (already capped at close)
-    leg_won: bool
-    turn_should_end: bool  # True only when the leg is won
+    leg_won: bool  # this dart closed the last open target
 
 
 def apply_cricket_dart(marks: dict[int, int], dart: DartInput) -> CricketDartResult:
@@ -41,23 +38,8 @@ def apply_cricket_dart(marks: dict[int, int], dart: DartInput) -> CricketDartRes
     target = dart.segment if dart.segment in CRICKET_TARGETS else None
 
     if target is None or raw_marks == 0 or marks[target] >= MARKS_TO_CLOSE:
-        return CricketDartResult(
-            marks=dict(marks),
-            target_hit=None,
-            marks_added=0,
-            leg_won=False,
-            turn_should_end=False,
-        )
+        return CricketDartResult(marks=dict(marks), leg_won=False)
 
-    added = min(MARKS_TO_CLOSE - marks[target], raw_marks)
     new_marks = dict(marks)
-    new_marks[target] += added
-    won = is_board_closed(new_marks)
-
-    return CricketDartResult(
-        marks=new_marks,
-        target_hit=target,
-        marks_added=added,
-        leg_won=won,
-        turn_should_end=won,
-    )
+    new_marks[target] = min(MARKS_TO_CLOSE, marks[target] + raw_marks)
+    return CricketDartResult(marks=new_marks, leg_won=is_board_closed(new_marks))
