@@ -21,7 +21,7 @@ import argparse
 import random
 import sys
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -40,10 +40,11 @@ from app.matches.models import (
     MatchStatus,
     Turn,
 )
-from app.players.models import BotDifficulty, Player
+from app.players.models import Player
 from app.players.service import create_player, list_bots
 from app.scoring import bot
-from app.scoring.domain import DartInput
+from app.scoring.bot import BotDifficulty
+from app.scoring.domain import DartInput, Multiplier
 
 DEMO_EMAIL = "demo@dartmetrics.app"
 DEMO_PASSWORD = "demo-darts"
@@ -76,51 +77,35 @@ SCHEDULE: list[tuple[str, GameType, int, float]] = [
 ]
 
 
-def _persona_darts(
-    match: Match, state: LegPlayerState, accuracy: bot.Accuracy, rng: random.Random
-) -> list[DartInput]:
-    if match.game_type is GameType.CRICKET:
-        return bot.cricket_visit(matches.marks_from_game_state(state.game_state), accuracy, rng)
-    if match.game_type is GameType.HALVE_IT:
-        _, round_number = matches.halve_it_state(state.game_state)
-        return bot.halve_it_visit(round_number, accuracy, rng)
-    return bot.x01_visit(state.remaining_score, accuracy, rng)
-
-
 def _play_out(
     session: Session,
     user: User,
     match: Match,
     personas: dict[uuid.UUID, bot.Accuracy],
     rng: random.Random,
-    stop_after_visits: int | None = None,
 ) -> None:
-    """Alternate visits until the match completes (or a visit cap)."""
-    visits = 0
+    """Alternate visits until the match completes."""
     while match.status is MatchStatus.IN_PROGRESS:
-        if stop_after_visits is not None and visits >= stop_after_visits:
-            return
         state = matches.build_match_state(session, match)
         active = next(p for p in state["players"] if p["is_active_turn"])
         if active["bot_difficulty"]:
             _, match, _ = matches.record_bot_visit(session, user, match.id, rng)
         else:
-            leg = next(l for l in match.legs if l.status is LegStatus.IN_PROGRESS)
+            leg = next(leg for leg in match.legs if leg.status is LegStatus.IN_PROGRESS)
             lps = session.scalar(
                 select(LegPlayerState).where(
                     LegPlayerState.leg_id == leg.id,
                     LegPlayerState.player_id == active["player_id"],
                 )
             )
-            darts = _persona_darts(match, lps, personas[active["player_id"]], rng)
+            darts = matches.simulate_visit(match, lps, personas[active["player_id"]], rng)
             _, match = matches.record_match_visit(session, user, match.id, active["player_id"], darts)
         session.flush()
-        visits += 1
 
 
-def _backdate(session: Session, match: Match, days_ago: float) -> None:
+def _backdate(match: Match, days_ago: float) -> None:
     """Shift the whole match into the past so history reads naturally."""
-    start = datetime.now(timezone.utc) - timedelta(days=days_ago)
+    start = datetime.now(UTC) - timedelta(days=days_ago)
     offset = start - match.created_at
     match.created_at = start
     match.started_at = start
@@ -192,7 +177,7 @@ def seed(session: Session, reset: bool, seed_value: int) -> None:
         match = matches.create_match(session, user, opp.id, best_of, starter, game)
         session.flush()
         _play_out(session, user, match, personas, rng)
-        _backdate(session, match, days_ago)
+        _backdate(match, days_ago)
         session.flush()
         winner = "Sam" if match.winner_player_id == me.id else opp.display_name
         print(f"  {game.value:8s} best of {best_of} vs {opp.display_name:11s} -> {winner}")
@@ -202,11 +187,11 @@ def seed(session: Session, reset: bool, seed_value: int) -> None:
     # and the screenshot/tour can take it from there.
     live = matches.create_match(session, user, bots[BotDifficulty.MEDIUM.value].id, 3, me.id, GameType.X01)
     session.flush()
-    t20 = DartInput(20, bot.Multiplier.TRIPLE)
+    t20 = DartInput(20, Multiplier.TRIPLE)
     matches.record_match_visit(session, user, live.id, me.id, [t20, t20, t20])
     _, live, _ = matches.record_bot_visit(session, user, live.id, rng)
-    _backdate(session, live, 0.01)
-    print(f"  x01      best of 3 vs Medium Bot  -> in progress (Sam to throw)")
+    _backdate(live, 0.01)
+    print("  x01      best of 3 vs Medium Bot  -> in progress (Sam to throw)")
 
 
 def main(argv: list[str] | None = None) -> int:

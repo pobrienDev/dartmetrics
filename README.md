@@ -267,6 +267,7 @@ docker compose up -d
 cd backend
 uv sync --locked --group dev                # creates .venv; Windows: same command
 .venv/bin/alembic upgrade head
+.venv/bin/ruff check .                      # lint, same rules as CI (pyproject.toml [tool.ruff])
 .venv/bin/pytest                            # 287 tests; integration tests skip without PostgreSQL
 .venv/bin/uvicorn app.main:app --reload     # http://localhost:8000, docs at /docs
 #    Without uv: python -m venv .venv && .venv/bin/python -m pip install --upgrade pip

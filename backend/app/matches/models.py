@@ -42,14 +42,12 @@ class GameType(enum.StrEnum):
 
 
 class MatchStatus(enum.StrEnum):
-    SCHEDULED = "scheduled"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
 
 
 class LegStatus(enum.StrEnum):
-    PENDING = "pending"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
 
@@ -83,12 +81,11 @@ class Match(Base):
         # Enum columns store member NAMES; existing rows are 501 matches
         server_default=GameType.X01.name,
     )
-    # Per-mode configuration (e.g. future custom Halve It sequences).
-    game_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # A match starts the moment it is created: leg 1 begins at once.
     status: Mapped[MatchStatus] = mapped_column(
         Enum(MatchStatus, native_enum=False, length=20),
         nullable=False,
-        default=MatchStatus.SCHEDULED,
+        default=MatchStatus.IN_PROGRESS,
     )
     winner_player_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("players.id"), nullable=True
@@ -136,7 +133,7 @@ class Leg(Base):
     status: Mapped[LegStatus] = mapped_column(
         Enum(LegStatus, native_enum=False, length=20),
         nullable=False,
-        default=LegStatus.PENDING,
+        default=LegStatus.IN_PROGRESS,
     )
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -184,7 +181,6 @@ class LegPlayerState(Base):
     )
     darts_thrown: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     turns_taken: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    has_won: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # Mode-specific state (Cricket marks, Halve It round/score);
     # x01 keeps using remaining_score and leaves this null.
     game_state: Mapped[dict | None] = mapped_column(JSON, nullable=True)

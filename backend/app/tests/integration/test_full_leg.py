@@ -6,11 +6,10 @@ item 10).
 import pytest
 from sqlalchemy import select
 
-from app.common.errors import DomainError, NotPlayersTurn
+from app.common.errors import NotPlayersTurn
 from app.matches.models import DartThrow, LegStatus, MatchStatus, Turn
 from app.matches.service import record_turn
 from app.scoring.domain import double, single, triple
-from app.scoring.engine import apply_dart
 
 
 def test_full_leg_from_501_to_checkout(db_session, match_setup):
@@ -40,11 +39,9 @@ def test_full_leg_from_501_to_checkout(db_session, match_setup):
 
     # Per-player state
     assert ms.state1.remaining_score == 0
-    assert ms.state1.has_won is True
     assert ms.state1.darts_thrown == 9
     assert ms.state1.turns_taken == 3
     assert ms.state2.remaining_score == 501 - 60 - 57
-    assert ms.state2.has_won is False
     assert ms.state2.darts_thrown == 6
 
     # Raw event history: 5 turns, 15 darts, sequential turn numbers

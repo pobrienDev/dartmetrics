@@ -38,7 +38,7 @@ from dataclasses import dataclass
 
 from app.scoring.cricket import CRICKET_TARGETS, MARKS_TO_CLOSE, apply_cricket_dart
 from app.scoring.domain import BULL_SEGMENT, DartInput, Multiplier
-from app.scoring.engine import apply_dart
+from app.scoring.engine import apply_dart, is_double_finishable
 from app.scoring.halve_it import (
     BLACK_SEGMENTS,
     DARTS_PER_ROUND,
@@ -188,10 +188,6 @@ PREFERRED_LEFTOVERS = (
 )
 
 
-def is_double_finishable(score: int) -> bool:
-    return score == 50 or (2 <= score <= 40 and score % 2 == 0)
-
-
 def _single_dart_for(points: int) -> Aim | None:
     """A dart that scores exactly `points`, preferring the easiest ring."""
     if points < 1:
@@ -291,7 +287,7 @@ def cricket_visit(
         darts.append(dart)
         result = apply_cricket_dart(current, dart)
         current = result.marks
-        if result.turn_should_end:
+        if result.leg_won:
             break
     return darts
 

@@ -4,21 +4,7 @@ import uuid
 
 import pytest
 
-
-def signup(client, email: str, display_name: str) -> dict:
-    client.post(
-        "/api/v1/auth/register",
-        json={
-            "email": email,
-            "password": "correct horse battery staple",
-            "display_name": display_name,
-        },
-    )
-    token = client.post(
-        "/api/v1/auth/login",
-        json={"email": email, "password": "correct horse battery staple"},
-    ).json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}
+from app.tests.integration.helpers import D12, S20, T19, T20, signup
 
 
 @pytest.fixture
@@ -164,10 +150,6 @@ def test_matches_require_authentication(client):
 
 # --- Visit recording ------------------------------------------------------
 
-T20 = {"segment": 20, "multiplier": "triple"}
-T19 = {"segment": 19, "multiplier": "triple"}
-D12 = {"segment": 12, "multiplier": "double"}
-S20 = {"segment": 20, "multiplier": "single"}
 
 
 def make_match(client, setup, best_of=1) -> dict:
@@ -194,7 +176,7 @@ def test_nine_dart_match_over_http(client, setup):
 
     body = visit(client, setup, match["id"], own, [T20] * 3)
     assert body["turn"]["points_scored"] == 180
-    me_state = [p for p in body["state"]["players"] if p["player_id"] == own][0]
+    me_state = next(p for p in body["state"]["players"] if p["player_id"] == own)
     assert me_state["remaining_score"] == 321
     assert not me_state["is_active_turn"]  # turn passed to the guest
 
@@ -207,7 +189,7 @@ def test_nine_dart_match_over_http(client, setup):
     assert final["state"]["status"] == "completed"
     assert final["state"]["winner_player_id"] == own
     assert final["state"]["current_leg"] is None
-    winner = [p for p in final["state"]["players"] if p["player_id"] == own][0]
+    winner = next(p for p in final["state"]["players"] if p["player_id"] == own)
     assert winner["legs_won"] == 1
 
 
@@ -224,7 +206,7 @@ def test_bust_leaves_scoreboard_unchanged(client, setup):
     body = visit(client, setup, match["id"], own, [T20, T20, {"segment": 7, "multiplier": "triple"}])
 
     assert body["turn"]["is_bust"] is True
-    me_state = [p for p in body["state"]["players"] if p["player_id"] == own][0]
+    me_state = next(p for p in body["state"]["players"] if p["player_id"] == own)
     assert me_state["remaining_score"] == 141  # restored
     assert not me_state["is_active_turn"]
 
@@ -246,9 +228,9 @@ def test_winning_a_leg_starts_next_with_alternated_starter(client, setup):
     assert state["current_leg"]["starting_player_id"] == guest  # alternated
     for player in state["players"]:
         assert player["remaining_score"] == 501  # fresh leg
-    own_state = [p for p in state["players"] if p["player_id"] == own][0]
+    own_state = next(p for p in state["players"] if p["player_id"] == own)
     assert own_state["legs_won"] == 1
-    guest_state = [p for p in state["players"] if p["player_id"] == guest][0]
+    guest_state = next(p for p in state["players"] if p["player_id"] == guest)
     assert guest_state["is_active_turn"]
 
 
@@ -516,7 +498,7 @@ def test_undo_restores_scoreboard_and_turn(client, setup):
     visit(client, setup, match["id"], own, [T20] * 3)  # 321, guest's turn
     state = undo(client, setup, match["id"])
 
-    me_state = [p for p in state["players"] if p["player_id"] == own][0]
+    me_state = next(p for p in state["players"] if p["player_id"] == own)
     assert me_state["remaining_score"] == 501
     assert me_state["is_active_turn"] is True  # my turn again
 
@@ -536,7 +518,7 @@ def test_undo_a_bust_restores_dart_counts(client, setup):
     visit(client, setup, match["id"], own, [T20, T20, {"segment": 7, "multiplier": "triple"}])  # bust
 
     state = undo(client, setup, match["id"])
-    me_state = [p for p in state["players"] if p["player_id"] == own][0]
+    me_state = next(p for p in state["players"] if p["player_id"] == own)
     assert me_state["remaining_score"] == 141
     assert me_state["is_active_turn"] is True
 

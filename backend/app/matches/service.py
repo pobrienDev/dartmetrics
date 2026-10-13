@@ -16,7 +16,8 @@ UI can capture the player's actual target.
 
 import random
 import uuid
-from datetime import datetime, timezone
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
@@ -36,8 +37,6 @@ from app.common.errors import (
     PlayerNotInMatch,
     UndoNotAvailable,
 )
-from dataclasses import dataclass, field
-
 from app.matches.models import (
     DartThrow,
     GameType,
@@ -48,20 +47,22 @@ from app.matches.models import (
     MatchStatus,
     Turn,
 )
-from app.players.models import BotDifficulty, Player
+from app.players.models import Player
 from app.scoring import bot
+from app.scoring.bot import BotDifficulty
 from app.scoring.cricket import apply_cricket_dart, initial_marks
 from app.scoring.domain import DartInput, Multiplier
-from app.scoring.engine import apply_dart
+from app.scoring.engine import apply_dart, is_double_finishable
 from app.scoring.halve_it import (
     DARTS_PER_ROUND,
-    STARTING_SCORE as HALVE_IT_STARTING_SCORE,
     apply_halve_it_visit,
     round_for_number,
 )
+from app.scoring.halve_it import (
+    STARTING_SCORE as HALVE_IT_STARTING_SCORE,
+)
 
 MAX_DARTS_PER_TURN = 3
-STARTING_SCORE = 501
 
 
 def create_match(
@@ -106,7 +107,7 @@ def create_match(
     if starter_id not in (own_player.id, opponent.id):
         raise InvalidMatchSetup("starting_player_id must be one of the participants.")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     match = Match(
         created_by_user_id=user.id,
         player1_id=own_player.id,
@@ -202,12 +203,11 @@ def list_matches(
     )
     # ... and one for the page's players, instead of two per row.
     player_ids = {pid for m in matches for pid in (m.player1_id, m.player2_id)}
-    names = {
-        pid: name
-        for pid, name in session.execute(
+    names = dict(
+        session.execute(
             select(Player.id, Player.display_name).where(Player.id.in_(player_ids))
-        )
-    } if player_ids else {}
+        ).all()
+    ) if player_ids else {}
 
     items = []
     for match in matches:
@@ -318,6 +318,16 @@ def _ensure_still_active(session: Session, match: Match, leg: Leg) -> None:
         raise LegNotActive(f"Leg {leg.leg_number} is {leg.status}; scoring is not allowed.")
 
 
+def _active_leg(match: Match, action: str) -> Leg:
+    """The leg being played, for an action that needs one (scoring, undo)."""
+    if match.status is not MatchStatus.IN_PROGRESS:
+        raise MatchNotActive(f"Match is {match.status}; {action} is not allowed.")
+    leg = next((leg for leg in match.legs if leg.status is LegStatus.IN_PROGRESS), None)
+    if leg is None:
+        raise LegNotActive("The match has no active leg.")
+    return leg
+
+
 def record_match_visit(
     session: Session,
     user: User,
@@ -328,17 +338,8 @@ def record_match_visit(
     """Record one visit against the match's active leg and, when the
     visit wins a leg mid-match, start the next leg with the alternated
     starter (Phase 0 spec 17.1)."""
-    match = get_match(session, match_id)
-    ensure_match_access(session, user, match)
-
-    if match.status is not MatchStatus.IN_PROGRESS:
-        raise MatchNotActive(f"Match is {match.status}; scoring is not allowed.")
-
-    leg = next(
-        (leg for leg in match.legs if leg.status is LegStatus.IN_PROGRESS), None
-    )
-    if leg is None:
-        raise LegNotActive("The match has no active leg.")
+    match = get_match_for_user(session, user, match_id)
+    leg = _active_leg(match, "scoring")
 
     turn = record_turn(session, leg.id, player_id, darts)
 
@@ -353,7 +354,7 @@ def record_match_visit(
             match,
             leg_number=leg.leg_number + 1,
             starting_player_id=other_starter,
-            now=datetime.now(timezone.utc),
+            now=datetime.now(UTC),
         )
         # The legs collection was loaded before the new leg existed
         session.expire(match, ["legs"])
@@ -377,16 +378,8 @@ def record_bot_visit(
     active), which keeps the API stateless and lets the UI pace the
     bot's throw.
     """
-    match = get_match(session, match_id)
-    ensure_match_access(session, user, match)
-    if match.status is not MatchStatus.IN_PROGRESS:
-        raise MatchNotActive(f"Match is {match.status}; scoring is not allowed.")
-
-    leg = next(
-        (leg for leg in match.legs if leg.status is LegStatus.IN_PROGRESS), None
-    )
-    if leg is None:
-        raise LegNotActive("The match has no active leg.")
+    match = get_match_for_user(session, user, match_id)
+    leg = _active_leg(match, "scoring")
 
     # Lock before deciding whose turn it is; record_turn re-selects the
     # same rows under the lock this transaction already holds.
@@ -397,15 +390,16 @@ def record_bot_visit(
     if not active.is_bot:
         raise NotBotsTurn("It is a human player's turn, not the bot's.")
 
-    darts = generate_bot_darts(match, states[active_id], active, rng or random.Random())
+    accuracy = bot.ACCURACY[BotDifficulty(active.bot_difficulty)]
+    darts = simulate_visit(match, states[active_id], accuracy, rng or random.Random())
     turn, match = record_match_visit(session, user, match_id, active_id, darts)
     return turn, match, darts
 
 
-def generate_bot_darts(
-    match: Match, state: LegPlayerState, player: Player, rng: random.Random
+def simulate_visit(
+    match: Match, state: LegPlayerState, accuracy: bot.Accuracy, rng: random.Random
 ) -> list[DartInput]:
-    accuracy = bot.ACCURACY[BotDifficulty(player.bot_difficulty)]
+    """Throw one visit with the bot engine for the match's game mode."""
     if match.game_type is GameType.CRICKET:
         return bot.cricket_visit(marks_from_game_state(state.game_state), accuracy, rng)
     if match.game_type is GameType.HALVE_IT:
@@ -419,14 +413,12 @@ def abandon_match(session: Session, user: User, match_id: uuid.UUID) -> Match:
     cancelled matches are excluded from win statistics. The active
     leg keeps its in-progress rows untouched for audit; the cancelled
     match status is what blocks any further scoring."""
-    match = get_match(session, match_id)
-    ensure_match_access(session, user, match)
-
+    match = get_match_for_user(session, user, match_id)
     if match.status is not MatchStatus.IN_PROGRESS:
         raise MatchNotActive(f"Match is {match.status}; only an in-progress match can be abandoned.")
 
     match.status = MatchStatus.CANCELLED
-    match.completed_at = datetime.now(timezone.utc)
+    match.completed_at = datetime.now(UTC)
     session.flush()
     return match
 
@@ -441,17 +433,8 @@ def undo_latest_visit(session: Session, user: User, match_id: uuid.UUID) -> Matc
     it are removed, so the human is back on the score they want to
     re-enter rather than watching the bot simply throw again.
     """
-    match = get_match(session, match_id)
-    ensure_match_access(session, user, match)
-
-    if match.status is not MatchStatus.IN_PROGRESS:
-        raise MatchNotActive(f"Match is {match.status}; undo is not allowed.")
-
-    leg = next(
-        (leg for leg in match.legs if leg.status is LegStatus.IN_PROGRESS), None
-    )
-    if leg is None:
-        raise LegNotActive("The match has no active leg.")
+    match = get_match_for_user(session, user, match_id)
+    leg = _active_leg(match, "undo")
 
     # Same lock as scoring: an undo tapped while a visit is in flight
     # waits for it, then removes that visit (the latest) rather than an
@@ -502,8 +485,7 @@ def _remove_turn(session: Session, match: Match, leg: Leg, turn: Turn) -> None:
     session.flush()
 
     if match.game_type is GameType.CRICKET:
-        # Marks aren't reversible per turn; rebuild them by replaying the
-        # player's surviving darts — the raw events are the truth.
+        # Marks aren't reversible per turn; rebuild them from the surviving darts.
         state.game_state = _replay_cricket_marks(session, leg.id, turn.player_id)
     elif match.game_type is GameType.HALVE_IT:
         state.game_state = _replay_halve_it(session, leg.id, turn.player_id)
@@ -513,21 +495,17 @@ def _remove_turn(session: Session, match: Match, leg: Leg, turn: Turn) -> None:
     session.flush()
 
 
-def _replay_halve_it(
+def _recorded_visits(
     session: Session, leg_id: uuid.UUID, player_id: uuid.UUID
-) -> dict:
+) -> list[list[DartInput]]:
+    """A player's surviving darts in a leg, visit by visit, as the engine
+    inputs they were recorded from — the raw events are the truth."""
     rows = session.execute(
-        select(
-            Turn.turn_number,
-            DartThrow.segment,
-            DartThrow.multiplier,
-            DartThrow.single_band,
-        )
+        select(Turn.turn_number, DartThrow.segment, DartThrow.multiplier, DartThrow.single_band)
         .join(Turn, DartThrow.turn_id == Turn.id)
         .where(Turn.leg_id == leg_id, Turn.player_id == player_id)
         .order_by(Turn.turn_number, DartThrow.dart_number)
     ).all()
-
     visits: dict[int, list[DartInput]] = {}
     for turn_number, segment, multiplier, band in rows:
         visits.setdefault(turn_number, []).append(
@@ -537,31 +515,22 @@ def _replay_halve_it(
                 band=band,
             )
         )
+    return [visits[n] for n in sorted(visits)]
 
+
+def _replay_halve_it(session: Session, leg_id: uuid.UUID, player_id: uuid.UUID) -> dict:
     score, round_number = HALVE_IT_STARTING_SCORE, 1
-    for turn_number in sorted(visits):
-        score = apply_halve_it_visit(score, round_number, visits[turn_number]).new_score
+    for visit in _recorded_visits(session, leg_id, player_id):
+        score = apply_halve_it_visit(score, round_number, visit).new_score
         round_number += 1
     return {"score": score, "round": round_number}
 
 
-def _replay_cricket_marks(
-    session: Session, leg_id: uuid.UUID, player_id: uuid.UUID
-) -> dict:
-    rows = session.execute(
-        select(DartThrow.segment, DartThrow.multiplier)
-        .join(Turn, DartThrow.turn_id == Turn.id)
-        .where(Turn.leg_id == leg_id, Turn.player_id == player_id)
-        .order_by(Turn.turn_number, DartThrow.dart_number)
-    ).all()
-
+def _replay_cricket_marks(session: Session, leg_id: uuid.UUID, player_id: uuid.UUID) -> dict:
     marks = initial_marks()
-    for segment, multiplier in rows:
-        dart = DartInput(
-            segment=None if segment == "MISS" else int(segment),
-            multiplier=Multiplier(multiplier),
-        )
-        marks = apply_cricket_dart(marks, dart).marks
+    for visit in _recorded_visits(session, leg_id, player_id):
+        for dart in visit:
+            marks = apply_cricket_dart(marks, dart).marks
     return {str(t): c for t, c in marks.items()}
 
 
@@ -641,10 +610,6 @@ def build_match_state(session: Session, match: Match) -> dict:
     }
 
 
-def _is_double_finishable(score: int) -> bool:
-    return score == 50 or (2 <= score <= 40 and score % 2 == 0)
-
-
 @dataclass
 class _VisitOutcome:
     """Uniform result of applying a visit's darts under any game mode."""
@@ -656,7 +621,23 @@ class _VisitOutcome:
     leg_won: bool
     dart_rows: list[dict] = field(default_factory=list)
     new_remaining: int | None = None  # x01 only
-    new_game_state: dict | None = None  # cricket marks (string keys)
+    new_game_state: dict | None = None  # Cricket marks (string keys) or Halve It score/round
+
+
+def _dart_row(dart: DartInput, score: int, **flags: bool) -> dict:
+    """Column values for one DartThrow. Only 501 sets the checkout flags:
+    the winning-dart constraint requires a double, so Cricket and Halve
+    It wins are recorded at the leg level instead."""
+    return {
+        "segment": "MISS" if dart.segment is None else str(dart.segment),
+        "multiplier": dart.multiplier.value,
+        "score": score,
+        "is_double": dart.is_double,
+        "single_band": dart.band,
+        "is_checkout_attempt": False,
+        "is_winning_dart": False,
+        **flags,
+    }
 
 
 def _play_x01_visit(turn_start: int, darts: list[DartInput]) -> _VisitOutcome:
@@ -680,16 +661,14 @@ def _play_x01_visit(turn_start: int, darts: list[DartInput]) -> _VisitOutcome:
 
     dart_rows = []
     score_before = turn_start
-    for dart, result in zip(darts, results):
+    for dart, result in zip(darts, results, strict=True):
         dart_rows.append(
-            {
-                "segment": "MISS" if dart.segment is None else str(dart.segment),
-                "multiplier": dart.multiplier.value,
-                "score": result.dart_score,
-                "is_double": dart.is_double,
-                "is_checkout_attempt": _is_double_finishable(score_before),
-                "is_winning_dart": result.is_checkout,
-            }
+            _dart_row(
+                dart,
+                result.dart_score,
+                is_checkout_attempt=is_double_finishable(score_before),
+                is_winning_dart=result.is_checkout,
+            )
         )
         score_before = result.tentative_remaining if not result.is_bust else score_before
 
@@ -723,18 +702,7 @@ def _play_cricket_visit(
         won = result.leg_won
         if won and index < len(darts) - 1:
             raise InvalidTurn("No darts may follow the leg-winning dart.")
-        dart_rows.append(
-            {
-                "segment": "MISS" if dart.segment is None else str(dart.segment),
-                "multiplier": dart.multiplier.value,
-                "score": dart.score,
-                "is_double": dart.is_double,
-                "is_checkout_attempt": False,
-                # The 501 constraint requires winning darts to be doubles,
-                # so Cricket wins are recorded at the leg level instead.
-                "is_winning_dart": False,
-            }
-        )
+        dart_rows.append(_dart_row(dart, dart.score))
 
     if not won and len(darts) < MAX_DARTS_PER_TURN:
         raise InvalidTurn(
@@ -773,19 +741,6 @@ def _play_halve_it_visit(
     score, round_number = halve_it_state(state.game_state)
     result = apply_halve_it_visit(score, round_number, darts)
 
-    dart_rows = [
-        {
-            "segment": "MISS" if dart.segment is None else str(dart.segment),
-            "multiplier": dart.multiplier.value,
-            "score": dart.score,
-            "is_double": dart.is_double,
-            "single_band": dart.band,
-            "is_checkout_attempt": False,
-            "is_winning_dart": False,
-        }
-        for dart in darts
-    ]
-
     return _VisitOutcome(
         # Zeros as in Cricket: the running score lives in game_state and
         # is fully rebuildable from the banded raw darts (whether a
@@ -795,7 +750,7 @@ def _play_halve_it_visit(
         points=0,
         is_bust=False,
         leg_won=False,  # decided against the opponent's state by the caller
-        dart_rows=dart_rows,
+        dart_rows=[_dart_row(dart, dart.score) for dart in darts],
         new_game_state={"score": result.new_score, "round": round_number + 1},
     )
 
@@ -829,11 +784,6 @@ def record_turn(
     if leg is None:
         raise LegNotActive(f"Leg {leg_id} does not exist.")
     match = leg.match
-
-    if match.status is not MatchStatus.IN_PROGRESS:
-        raise MatchNotActive(f"Match is {match.status}; scoring is not allowed.")
-    if leg.status is not LegStatus.IN_PROGRESS:
-        raise LegNotActive(f"Leg {leg.leg_number} is {leg.status}; scoring is not allowed.")
     if player_id not in (match.player1_id, match.player2_id):
         raise PlayerNotInMatch(f"Player {player_id} is not in this match.")
 
@@ -856,7 +806,7 @@ def record_turn(
         outcome = _play_x01_visit(state.remaining_score, darts)
         leg_winner_id = player_id if outcome.leg_won else None
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     turn = Turn(
         leg_id=leg.id,
         player_id=player_id,
@@ -882,7 +832,6 @@ def record_turn(
 
     if outcome.leg_won:
         # In Halve It the leg's winner is not necessarily the thrower.
-        states[leg_winner_id].has_won = True
         leg.status = LegStatus.COMPLETED
         leg.winner_player_id = leg_winner_id
         leg.completed_at = now

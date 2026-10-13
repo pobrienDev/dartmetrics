@@ -8,27 +8,7 @@ import uuid
 
 import pytest
 
-
-def signup(client, email: str, display_name: str) -> dict:
-    client.post(
-        "/api/v1/auth/register",
-        json={
-            "email": email,
-            "password": "correct horse battery staple",
-            "display_name": display_name,
-        },
-    )
-    token = client.post(
-        "/api/v1/auth/login",
-        json={"email": email, "password": "correct horse battery staple"},
-    ).json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}
-
-
-T20 = {"segment": 20, "multiplier": "triple"}
-T19 = {"segment": 19, "multiplier": "triple"}
-D12 = {"segment": 12, "multiplier": "double"}
-S20 = {"segment": 20, "multiplier": "single"}
+from app.tests.integration.helpers import D12, S20, T19, T20, signup
 
 
 @pytest.fixture

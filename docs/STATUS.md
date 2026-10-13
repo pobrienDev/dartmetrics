@@ -24,8 +24,8 @@ history → career statistics.
   match history with filters/pagination. **67 Vitest/RTL tests** plus
   **3 Playwright e2e** journeys (501 vs guest, bot match + abandon,
   login redirect).
-- **CI** (.github/workflows/ci.yml): backend-tests (with `alembic
-  check`), frontend-tests, e2e and docker-build — four jobs; the two
+- **CI** (.github/workflows/ci.yml): backend-tests (ruff, `alembic
+  check`, pytest), frontend-tests, e2e and docker-build — four jobs; the two
   slow ones wait for the test jobs. Render deploys main only after the
   checks pass (`autoDeployTrigger: checksPass`).
 

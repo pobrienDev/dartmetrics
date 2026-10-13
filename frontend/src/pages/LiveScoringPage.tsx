@@ -25,25 +25,14 @@ import type {
   DartMultiplier,
   DartRequest,
   MatchState,
-  PlayerState,
-  TurnSummary,
   VisitResponse,
 } from '../api/types'
+import { RecentVisits, type RecentVisit } from '../components/RecentVisits'
 import { checkoutFor } from '../utils/checkouts'
 import { boardClosed, CRICKET_TARGETS, marksAfterDarts, markSymbol } from '../utils/cricket'
 import { dartLabel, dartScore, visitMustEnd } from '../utils/darts'
 import { GAME_CHIP, GAME_LABELS } from '../utils/games'
-
-interface RecentVisit {
-  turn: TurnSummary
-  labels: string
-  // Halve It only: the player's running total before and after the
-  // round. The server stores every Halve It turn with points_scored 0
-  // (the total lives in the leg state), so the row is rendered from
-  // these instead.
-  scoreBefore?: number | null
-  scoreAfter?: number | null
-}
+import { shortName } from '../utils/players'
 
 type Moment = 'bust' | 'oneEighty' | 'ton' | 'checkout' | null
 
@@ -67,11 +56,6 @@ const ROUND_LABELS: Record<string, string> = {
 
 function defaultBand(roundTarget: string | null | undefined): 'inner' | 'outer' {
   return roundTarget?.startsWith('inner') ? 'inner' : 'outer'
-}
-
-/** Bot players are called "Medium Bot" etc.; the badge already says bot. */
-function shortName(player: PlayerState): string {
-  return player.bot_difficulty ? player.display_name.replace(/\s+bot$/i, '') : player.display_name
 }
 
 const BOT_THROW_DELAY_MS = 1200
@@ -178,7 +162,7 @@ export function LiveScoringPage() {
     } else if (turn.points_scored === 180) {
       celebrate('oneEighty', turn.player_id)
       show(isYou ? 'ONE HUNDRED AND EIGHTY!' : `${who}: ONE HUNDRED AND EIGHTY!`, 'oneEighty')
-    } else if (!isCricketGame(response.state) && turn.points_scored >= 100) {
+    } else if (response.state.game_type !== 'cricket' && turn.points_scored >= 100) {
       celebrate('ton', turn.player_id)
       show(`${threw} ${labels} for ${turn.points_scored}!`, 'ton')
     } else if (!isYou) {
@@ -532,7 +516,7 @@ export function LiveScoringPage() {
             </button>
           </div>
           {recentTurns.length > 0 && (
-            <RecentVisits turns={recentTurns} state={state} isCricket={isCricket} />
+            <RecentVisits turns={recentTurns} state={state} />
           )}
         </div>
       ) : (
@@ -573,7 +557,9 @@ export function LiveScoringPage() {
             </div>
           </div>
 
-          {/* Multiplier selector */}
+          {/* Multiplier selector. The pad is locked while a visit is in
+              flight: a tap in that window used to be dropped silently, so a
+              quick player lost the first dart of their next visit. */}
           <div className="mb-3 grid grid-cols-4 gap-2">
             {(['single', 'double', 'triple'] as const).map((m) => (
               <button
@@ -590,7 +576,8 @@ export function LiveScoringPage() {
             ))}
             <button
               onClick={() => addDart({ segment: null, multiplier: 'miss' })}
-              className="rounded-xl bg-ink-800 py-3 text-sm font-bold uppercase tracking-wider text-ink-300 transition hover:bg-ink-700"
+              disabled={submitVisit.isPending}
+              className="rounded-xl bg-ink-800 py-3 text-sm font-bold uppercase tracking-wider text-ink-300 transition hover:bg-ink-700 disabled:opacity-40"
             >
               Miss
             </button>
@@ -622,14 +609,16 @@ export function LiveScoringPage() {
               <button
                 key={n}
                 onClick={() => addDart({ segment: n, multiplier })}
-                className="rounded-xl bg-ink-800 py-3.5 font-display text-2xl font-bold tabular-nums transition hover:bg-ink-700 active:scale-95 sm:py-4"
+                disabled={submitVisit.isPending}
+                className="rounded-xl bg-ink-800 py-3.5 font-display text-2xl font-bold tabular-nums transition hover:bg-ink-700 active:scale-95 disabled:opacity-40 sm:py-4"
               >
                 {n}
               </button>
             ))}
             <button
               onClick={() => addDart({ segment: 25, multiplier: multiplier === 'triple' ? 'single' : multiplier })}
-              className="col-span-5 flex items-center justify-center gap-3 rounded-xl bg-gradient-to-br from-bust-700 to-bust-900 py-3.5 font-display text-2xl font-bold ring-1 ring-bust-500/50 transition hover:from-bust-500 hover:to-bust-700 active:scale-95 sm:col-span-2 sm:py-4"
+              disabled={submitVisit.isPending}
+              className="col-span-5 disabled:opacity-40 flex items-center justify-center gap-3 rounded-xl bg-gradient-to-br from-bust-700 to-bust-900 py-3.5 font-display text-2xl font-bold ring-1 ring-bust-500/50 transition hover:from-bust-500 hover:to-bust-700 active:scale-95 sm:col-span-2 sm:py-4"
               title="Outer bull 25; select Double for the inner bull (50)"
             >
               <span className="inline-block h-4 w-4 rounded-full border-2 border-white/80 bg-bust-500" aria-hidden="true" />
@@ -638,85 +627,10 @@ export function LiveScoringPage() {
           </div>
 
           {recentTurns.length > 0 && (
-            <RecentVisits turns={recentTurns} state={state} isCricket={isCricket} />
+            <RecentVisits turns={recentTurns} state={state} />
           )}
         </div>
       )}
-    </div>
-  )
-}
-
-function isCricketGame(state: MatchState): boolean {
-  return state.game_type === 'cricket'
-}
-
-function RecentVisits({
-  turns,
-  state,
-  isCricket,
-}: {
-  turns: RecentVisit[]
-  state: MatchState
-  isCricket: boolean
-}) {
-  const isHalveIt = state.game_type === 'halve_it'
-  return (
-    <div className="mt-6">
-      <p className="label">Recent visits</p>
-      <ul className="space-y-1 text-sm">
-        {turns.map(({ turn, labels, scoreBefore, scoreAfter }) => {
-          const who = state.players.find((p) => p.player_id === turn.player_id)
-          // Halve It: a round either adds its qualifying points or halves.
-          // Judged from the running total, not points_scored (always 0).
-          const delta =
-            isHalveIt && scoreBefore != null && scoreAfter != null ? scoreAfter - scoreBefore : null
-          const halved = delta != null && delta < 0
-          const tone = turn.is_bust || halved
-            ? 'text-bust-400'
-            : turn.is_checkout
-              ? 'text-felt-300'
-              : turn.points_scored >= 100 && !isCricket
-                ? 'text-gold-300'
-                : 'text-ink-200'
-          return (
-            <li key={turn.id} className="flex justify-between rounded-lg bg-ink-800 px-3 py-2">
-              <span className="text-ink-300">{who ? shortName(who) : ''}</span>
-              <span className={`font-mono ${tone}`}>
-                {isCricket ? (
-                  <>
-                    {labels}
-                    {turn.is_checkout && ' ◎ closed'}
-                  </>
-                ) : isHalveIt ? (
-                  <>
-                    {labels}
-                    {'  '}
-                    {halved ? 'HALVED' : delta != null ? `+${delta}` : ''}
-                    {scoreBefore != null && scoreAfter != null && (
-                      <>
-                        {'  '}
-                        <span className="text-ink-500">({scoreBefore} → {scoreAfter})</span>
-                      </>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    {labels}
-                    {'  '}
-                    {turn.is_bust
-                      ? 'BUST'
-                      : turn.is_checkout
-                        ? `${turn.points_scored} ✓ out`
-                        : turn.points_scored}
-                    {'  '}
-                    <span className="text-ink-500">({turn.turn_start_score} → {turn.turn_end_score})</span>
-                  </>
-                )}
-              </span>
-            </li>
-          )
-        })}
-      </ul>
     </div>
   )
 }

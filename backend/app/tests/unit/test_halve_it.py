@@ -3,10 +3,19 @@ in docs/GAME_MODES.md."""
 
 import pytest
 
-from app.scoring.domain import DartInput, Multiplier, double, inner_bull, miss, outer_bull, single, triple
+from app.scoring.domain import (
+    DartInput,
+    Multiplier,
+    double,
+    inner_bull,
+    miss,
+    outer_bull,
+    single,
+    triple,
+)
 from app.scoring.halve_it import (
-    HalveItRound,
     ROUND_SEQUENCE,
+    HalveItRound,
     apply_halve_it_visit,
     halved,
     round_for_number,

@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { AuthProvider } from '../auth/AuthContext'
+import { jsonResponse } from '../test/stubs'
 import { MatchHistoryPage } from './MatchHistoryPage'
 
 const MATCH = {
@@ -18,10 +19,6 @@ const MATCH = {
     { player_id: 'p1', display_name: 'Pat', legs_won: 2 },
     { player_id: 'p2', display_name: 'Guest Gary', legs_won: 1 },
   ],
-}
-
-function jsonResponse(body: unknown, status = 200) {
-  return { ok: status < 400, status, json: () => Promise.resolve(body) }
 }
 
 function stubApi() {

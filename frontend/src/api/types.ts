@@ -33,7 +33,7 @@ export interface ApiErrorBody {
 
 // --- Matches ---------------------------------------------------------------
 
-export type MatchStatus = 'scheduled' | 'in_progress' | 'completed' | 'cancelled'
+export type MatchStatus = 'in_progress' | 'completed' | 'cancelled'
 export type GameType = 'x01' | 'cricket' | 'halve_it'
 
 export interface PlayerState {
@@ -49,7 +49,7 @@ export interface PlayerState {
   is_active_turn: boolean
 }
 
-export interface LegState {
+interface LegState {
   id: string
   leg_number: number
   status: string
@@ -154,7 +154,7 @@ export interface PlayerMatchSummary {
   checkout_percentage: number | null
 }
 
-export interface LegSummary {
+interface LegSummary {
   leg_number: number
   status: string
   starting_player_id: string

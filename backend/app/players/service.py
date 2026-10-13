@@ -12,8 +12,9 @@ from sqlalchemy.orm import Session
 
 from app.auth.models import User
 from app.common.errors import Forbidden, PlayerNotFound, PlayerProfileExists
-from app.players.models import BotDifficulty, Player
+from app.players.models import Player
 from app.players.schemas import PlayerUpdateRequest
+from app.scoring.bot import BotDifficulty
 
 
 def create_player(
@@ -47,15 +48,6 @@ def create_player(
     session.add(player)
     session.flush()
     return player
-
-
-BOT_DISPLAY_NAMES: dict[BotDifficulty, str] = {
-    BotDifficulty.NOOB: "Noob Bot",
-    BotDifficulty.EASY: "Easy Bot",
-    BotDifficulty.MEDIUM: "Medium Bot",
-    BotDifficulty.HARD: "Hard Bot",
-    BotDifficulty.PRO: "Pro Bot",
-}
 
 
 def list_bots(session: Session) -> list[Player]:

@@ -34,7 +34,15 @@ class DartResult:
     is_bust: bool
     is_checkout: bool
     effective_remaining: int
-    turn_should_end: bool
+
+    @property
+    def turn_should_end(self) -> bool:
+        return self.is_bust or self.is_checkout
+
+
+def is_double_finishable(score: int) -> bool:
+    """True when one dart can finish: D1-D20 (2-40 even) or the inner bull (50)."""
+    return score == 50 or (2 <= score <= 40 and score % 2 == 0)
 
 
 def apply_dart(
@@ -63,7 +71,6 @@ def apply_dart(
             is_bust=True,
             is_checkout=False,
             effective_remaining=turn_start_score,
-            turn_should_end=True,
         )
 
     if candidate == 0:
@@ -73,7 +80,6 @@ def apply_dart(
             is_bust=False,
             is_checkout=True,
             effective_remaining=0,
-            turn_should_end=True,
         )
 
     return DartResult(
@@ -82,5 +88,4 @@ def apply_dart(
         is_bust=False,
         is_checkout=False,
         effective_remaining=candidate,
-        turn_should_end=False,
     )

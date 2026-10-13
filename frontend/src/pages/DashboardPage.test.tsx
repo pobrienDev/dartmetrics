@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { PlayerStats, UserResponse } from '../api/types'
 import { AuthProvider } from '../auth/AuthContext'
+import { jsonResponse } from '../test/stubs'
 import { DashboardPage } from './DashboardPage'
 
 const ME: UserResponse = {
@@ -36,10 +37,6 @@ const STATS: PlayerStats = {
   checkout_attempts: 40,
   checkout_successes: 16,
   checkout_percentage: 40,
-}
-
-function jsonResponse(body: unknown, status = 200) {
-  return { ok: status < 400, status, json: () => Promise.resolve(body) }
 }
 
 /** Stub the API. The player list is deliberately empty: on a busy site
