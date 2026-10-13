@@ -6,22 +6,7 @@ import pytest
 from sqlalchemy import select
 
 from app.players.models import Player
-
-
-def signup(client, email: str, display_name: str) -> dict:
-    client.post(
-        "/api/v1/auth/register",
-        json={
-            "email": email,
-            "password": "correct horse battery staple",
-            "display_name": display_name,
-        },
-    )
-    token = client.post(
-        "/api/v1/auth/login",
-        json={"email": email, "password": "correct horse battery staple"},
-    ).json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}
+from app.tests.integration.helpers import signup
 
 
 @pytest.fixture
