@@ -557,7 +557,9 @@ export function LiveScoringPage() {
             </div>
           </div>
 
-          {/* Multiplier selector */}
+          {/* Multiplier selector. The pad is locked while a visit is in
+              flight: a tap in that window used to be dropped silently, so a
+              quick player lost the first dart of their next visit. */}
           <div className="mb-3 grid grid-cols-4 gap-2">
             {(['single', 'double', 'triple'] as const).map((m) => (
               <button
@@ -574,7 +576,8 @@ export function LiveScoringPage() {
             ))}
             <button
               onClick={() => addDart({ segment: null, multiplier: 'miss' })}
-              className="rounded-xl bg-ink-800 py-3 text-sm font-bold uppercase tracking-wider text-ink-300 transition hover:bg-ink-700"
+              disabled={submitVisit.isPending}
+              className="rounded-xl bg-ink-800 py-3 text-sm font-bold uppercase tracking-wider text-ink-300 transition hover:bg-ink-700 disabled:opacity-40"
             >
               Miss
             </button>
@@ -606,14 +609,16 @@ export function LiveScoringPage() {
               <button
                 key={n}
                 onClick={() => addDart({ segment: n, multiplier })}
-                className="rounded-xl bg-ink-800 py-3.5 font-display text-2xl font-bold tabular-nums transition hover:bg-ink-700 active:scale-95 sm:py-4"
+                disabled={submitVisit.isPending}
+                className="rounded-xl bg-ink-800 py-3.5 font-display text-2xl font-bold tabular-nums transition hover:bg-ink-700 active:scale-95 disabled:opacity-40 sm:py-4"
               >
                 {n}
               </button>
             ))}
             <button
               onClick={() => addDart({ segment: 25, multiplier: multiplier === 'triple' ? 'single' : multiplier })}
-              className="col-span-5 flex items-center justify-center gap-3 rounded-xl bg-gradient-to-br from-bust-700 to-bust-900 py-3.5 font-display text-2xl font-bold ring-1 ring-bust-500/50 transition hover:from-bust-500 hover:to-bust-700 active:scale-95 sm:col-span-2 sm:py-4"
+              disabled={submitVisit.isPending}
+              className="col-span-5 disabled:opacity-40 flex items-center justify-center gap-3 rounded-xl bg-gradient-to-br from-bust-700 to-bust-900 py-3.5 font-display text-2xl font-bold ring-1 ring-bust-500/50 transition hover:from-bust-500 hover:to-bust-700 active:scale-95 sm:col-span-2 sm:py-4"
               title="Outer bull 25; select Double for the inner bull (50)"
             >
               <span className="inline-block h-4 w-4 rounded-full border-2 border-white/80 bg-bust-500" aria-hidden="true" />

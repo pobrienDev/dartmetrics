@@ -492,3 +492,44 @@ describe('LiveScoringPage touch targets', () => {
     }
   })
 })
+
+describe('LiveScoringPage pad while a visit is in flight', () => {
+  it('locks the number pad until the server has answered', async () => {
+    let answer: (value: unknown) => void = () => {}
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        const method = init?.method ?? 'GET'
+        if (url === '/api/v1/matches/match-1' && method === 'GET') return Promise.resolve(jsonResponse(x01State()))
+        if (url === '/api/v1/matches/match-1/visits' && method === 'POST') {
+          return new Promise((resolve) => {
+            answer = resolve
+          })
+        }
+        return Promise.resolve(jsonResponse({ error: { code: 'NOT_FOUND', message: url } }, 404))
+      }),
+    )
+    renderPage()
+    const user = userEvent.setup()
+
+    await screen.findAllByText('501')
+    for (let i = 0; i < 3; i++) await user.click(screen.getByRole('button', { name: '20' }))
+
+    // Submitted, no reply yet: the pad is disabled rather than silently dropping taps.
+    await waitFor(() => expect(screen.getByRole('button', { name: '20' })).toBeDisabled())
+    expect(screen.getByRole('button', { name: 'Bull' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Miss' })).toBeDisabled()
+
+    answer(
+      jsonResponse(
+        {
+          turn: { id: 'turn-1', player_id: ME, turn_number: 1, turn_start_score: 501, turn_end_score: 441, points_scored: 60, is_bust: false, is_checkout: false },
+          state: x01State({ mine: 441, active: RIVAL }),
+        },
+        201,
+      ),
+    )
+    expect(await screen.findByText('441')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: '20' })).toBeEnabled())
+  })
+})
