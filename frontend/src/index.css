@@ -38,7 +38,6 @@
   --animate-shake: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
   --animate-flash-gold: flash-gold 1s ease-out both;
   --animate-flash-green: flash-green 1s ease-out both;
-  --animate-flash-red: flash-red 0.8s ease-out both;
   --animate-pop: pop 0.35s ease-out both;
   --animate-rise: rise 0.3s ease-out both;
 
@@ -55,10 +54,6 @@
   @keyframes flash-green {
     0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.95); }
     100% { box-shadow: 0 0 0 28px rgba(16, 185, 129, 0); }
-  }
-  @keyframes flash-red {
-    0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.9); }
-    100% { box-shadow: 0 0 0 20px rgba(239, 68, 68, 0); }
   }
   @keyframes pop {
     0% { transform: scale(0.6); opacity: 0; }

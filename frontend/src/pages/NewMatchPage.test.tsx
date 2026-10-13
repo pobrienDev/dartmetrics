@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { AuthProvider } from '../auth/AuthContext'
+import { jsonResponse } from '../test/stubs'
 import { NewMatchPage } from './NewMatchPage'
 
 const BOTS = ['noob', 'easy', 'medium', 'hard', 'pro'].map((difficulty) => ({
@@ -16,10 +17,6 @@ const BOTS = ['noob', 'easy', 'medium', 'hard', 'pro'].map((difficulty) => ({
   bot_difficulty: difficulty,
   created_at: '2026-09-08T00:00:00Z',
 }))
-
-function jsonResponse(body: unknown, status = 200) {
-  return { ok: status < 400, status, json: () => Promise.resolve(body) }
-}
 
 /** A fetch stub that routes by URL and records match creations. */
 function stubApi(players: unknown[] = []) {

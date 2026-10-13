@@ -35,7 +35,7 @@ export function AuthLayout({
             checkouts and 180s that fall out of the raw throws.
           </p>
         </div>
-        <p className="relative z-10 text-xs text-ink-500">Play a friend, a guest, or one of five bots.</p>
+        <p className="relative z-10 text-xs text-ink-500">Play a guest or one of five bots.</p>
         <Dartboard className="absolute -bottom-28 -right-28 h-[28rem] w-[28rem] opacity-80" />
       </aside>
 

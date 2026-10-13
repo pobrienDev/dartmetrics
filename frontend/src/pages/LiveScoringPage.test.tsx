@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { MatchState, VisitResponse } from '../api/types'
+import { jsonResponse } from '../test/stubs'
 import { LiveScoringPage } from './LiveScoringPage'
 
 const ME = '00000000-0000-0000-0000-000000000001'
@@ -41,10 +42,6 @@ function halveItState(overrides: Partial<{ mine: number; theirs: number; round: 
       round_target: 'outer_black',
     })),
   }
-}
-
-function jsonResponse(body: unknown, status = 200) {
-  return { ok: status < 400, status, json: () => Promise.resolve(body) }
 }
 
 /** Serve the match state; answer visit posts with `visitReply`. */
